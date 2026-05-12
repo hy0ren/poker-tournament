@@ -1,0 +1,11 @@
+# Core engine has no runtime dependencies (Python 3.8+ stdlib only).
+# These extras are only required to run the optional web UI / API
+# (webapp/) and the API tests.
+
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.5
+
+# Test-only
+pytest>=7
+httpx>=0.27

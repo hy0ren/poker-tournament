@@ -1,61 +1,46 @@
-"""Bot loader — imports a Python file and extracts a decide() function."""
+"""Load workshop bots from Python files."""
+
+from __future__ import annotations
 
 import importlib.util
 import os
 import sys
-from typing import Callable, Tuple
+from typing import Callable, List, Tuple
 
 
 def load_bot(filepath: str) -> Tuple[str, Callable]:
-    """
-    Load a poker bot from *filepath*.
-
-    The file must define a ``decide(game_state)`` function that returns
-    ``(action, amount)`` (see README for the full interface).
-    An optional module-level ``BOT_NAME`` string gives the bot a display name.
-
-    Returns:
-        (bot_name, decide_func)
-
-    Raises:
-        ValueError: if the file has no ``decide`` function.
-        FileNotFoundError: if *filepath* does not exist.
-    """
+    """Load one bot file and return ``(display_name, decide_function)``."""
     filepath = os.path.abspath(filepath)
     if not os.path.isfile(filepath):
         raise FileNotFoundError(f"Bot file not found: {filepath}")
 
-    module_name = f"_bot_{os.path.splitext(os.path.basename(filepath))[0]}"
+    module_name = f"_poker_bot_{os.path.splitext(os.path.basename(filepath))[0]}"
     spec = importlib.util.spec_from_file_location(module_name, filepath)
-    module = importlib.util.module_from_spec(spec)   # type: ignore[arg-type]
+    if spec is None or spec.loader is None:
+        raise ValueError(f"Could not import bot file: {filepath}")
+
+    module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
-    spec.loader.exec_module(module)                  # type: ignore[union-attr]
+    spec.loader.exec_module(module)
 
-    if not hasattr(module, 'decide') or not callable(module.decide):
-        raise ValueError(
-            f"{filepath} must define a callable 'decide(game_state)' function"
-        )
+    decide = getattr(module, "decide", None)
+    if not callable(decide):
+        raise ValueError(f"{filepath} must define decide(game_state)")
 
-    bot_name = getattr(module, 'BOT_NAME', None) or os.path.splitext(
-        os.path.basename(filepath)
-    )[0]
-
-    return str(bot_name), module.decide
+    bot_name = getattr(module, "BOT_NAME", None)
+    if not bot_name:
+        bot_name = os.path.splitext(os.path.basename(filepath))[0]
+    return str(bot_name), decide
 
 
-def load_bots_from_directory(directory: str) -> list:
-    """
-    Load all ``*.py`` bot files from *directory* (non-recursive).
-
-    Returns:
-        List of (bot_name, decide_func) tuples.
-    """
-    bots = []
+def load_bots_from_directory(directory: str) -> List[Tuple[str, Callable]]:
+    """Load every non-private ``*.py`` bot in a directory."""
+    bots: List[Tuple[str, Callable]] = []
     for filename in sorted(os.listdir(directory)):
-        if filename.endswith('.py') and not filename.startswith('_'):
+        if filename.endswith(".py") and not filename.startswith("_"):
             path = os.path.join(directory, filename)
             try:
                 bots.append(load_bot(path))
             except Exception as exc:
-                print(f"[WARNING] Could not load {path}: {exc}")
+                print(f"[warning] Skipping {filename}: {exc}")
     return bots

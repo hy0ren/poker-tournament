@@ -1,28 +1,23 @@
-"""Player class wrapping a bot function."""
+"""Player state used by the game engine."""
 
+from __future__ import annotations
+
+from dataclasses import dataclass, field
 from typing import Callable, List
 
 from .card import Card
 
 
+@dataclass
 class Player:
-    """Represents a player seat at the table."""
-
-    def __init__(self, name: str, stack: int, bot_func: Callable):
-        self.name = name
-        self.stack = stack
-        self.bot_func = bot_func
-
-        # Per-hand state (reset each hand)
-        self.hole_cards: List[Card] = []
-        self.current_bet: int = 0    # Chips committed in the current betting round
-        self.total_bet: int = 0      # Chips committed across all rounds this hand
-        self.folded: bool = False
-        self.all_in: bool = False
-
-    # ------------------------------------------------------------------
-    # State management
-    # ------------------------------------------------------------------
+    name: str
+    stack: int
+    bot_func: Callable
+    hole_cards: List[Card] = field(default_factory=list)
+    current_bet: int = 0
+    total_bet: int = 0
+    folded: bool = False
+    all_in: bool = False
 
     def reset_for_hand(self) -> None:
         self.hole_cards = []
@@ -31,21 +26,15 @@ class Player:
         self.folded = False
         self.all_in = False
 
-    def reset_for_round(self) -> None:
-        """Called at the start of each betting street (flop/turn/river)."""
+    def reset_for_street(self) -> None:
         self.current_bet = 0
 
-    def is_active(self) -> bool:
-        """True when the player can still voluntarily act."""
-        return not self.folded and not self.all_in and self.stack > 0
+    def can_act(self) -> bool:
+        return self.stack > 0 and not self.folded and not self.all_in
 
-    # ------------------------------------------------------------------
-    # Chip handling
-    # ------------------------------------------------------------------
-
-    def bet(self, amount: int) -> int:
-        """Commit *amount* chips (capped at stack). Sets all_in if necessary."""
-        amount = min(amount, self.stack)
+    def commit(self, amount: int) -> int:
+        """Move chips from this player's stack into the pot."""
+        amount = max(0, min(int(amount), self.stack))
         self.stack -= amount
         self.current_bet += amount
         self.total_bet += amount
@@ -53,5 +42,13 @@ class Player:
             self.all_in = True
         return amount
 
-    def __repr__(self) -> str:
-        return f"Player({self.name!r}, stack={self.stack})"
+    def public_state(self, reveal_cards: bool = True) -> dict:
+        return {
+            "name": self.name,
+            "stack": self.stack,
+            "bet": self.current_bet,
+            "total_bet": self.total_bet,
+            "folded": self.folded,
+            "all_in": self.all_in,
+            "cards": [card.to_dict() for card in self.hole_cards] if reveal_cards else [],
+        }

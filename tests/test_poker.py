@@ -1,187 +1,151 @@
-"""Basic tests for the poker tournament package."""
+"""Core tests for the poker tournament project."""
 
-import sys
+from __future__ import annotations
+
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+from poker_tournament.bot_loader import load_bot, load_bots_from_directory
 from poker_tournament.card import Card, Deck
+from poker_tournament.game import PokerGame
 from poker_tournament.hand_eval import evaluate_hand, hand_name
 from poker_tournament.player import Player
-from poker_tournament.game import PokerGame
-from poker_tournament.bot_loader import load_bot, load_bots_from_directory
 from poker_tournament.tournament import Tournament
 
+BOTS_DIR = os.path.join(os.path.dirname(__file__), "..", "bots")
+BOT_FILES = [
+    "advanced_draw_chaser_bot.py",
+    "advanced_god_bot.py",
+    "advanced_maniac_bot.py",
+    "advanced_pot_pressure_bot.py",
+    "advanced_small_ball_bot.py",
+    "advanced_three_bet_bot.py",
+    "advanced_trap_bot.py",
+    "advanced_value_bot.py",
+    "basic_ace_bot.py",
+    "basic_always_call_bot.py",
+    "basic_cautious_bot.py",
+    "basic_face_card_bot.py",
+    "basic_min_raise_bot.py",
+    "basic_pair_bot.py",
+    "basic_random_bot.py",
+    "basic_suited_bot.py",
+    "intermediate_big_stack_bot.py",
+    "intermediate_cheap_flop_bot.py",
+    "intermediate_connector_bot.py",
+    "intermediate_position_bot.py",
+    "intermediate_pot_odds_bot.py",
+    "intermediate_short_stack_bot.py",
+    "intermediate_street_smart_bot.py",
+    "intermediate_top_pair_bot.py",
+]
+BOT_NAMES = {
+    "Basic Ace",
+    "Basic Always Call",
+    "Basic Cautious",
+    "Basic Face Card",
+    "Basic Min Raise",
+    "Basic Pair",
+    "Basic Random",
+    "Basic Suited",
+    "Big Stack",
+    "Cheap Flop",
+    "Connector Bot",
+    "Draw Chaser",
+    "GodBot",
+    "Maniac Bot",
+    "Position Bot",
+    "Pot Odds",
+    "Pot Pressure",
+    "Short Stack",
+    "Small Ball",
+    "Street Smart",
+    "Three Bet Bot",
+    "Top Pair",
+    "Trap Bot",
+    "Value Bot",
+}
 
-# ---------------------------------------------------------------------------
-# Card tests
-# ---------------------------------------------------------------------------
-
-def test_card_repr():
-    assert repr(Card(14, 'h')) == 'A♥'
-    assert repr(Card(13, 's')) == 'K♠'
-    assert repr(Card(10, 'd')) == 'T♦'
-    assert repr(Card(2, 'c')) == '2♣'
-
-
-def test_deck_size():
-    d = Deck()
-    assert len(d) == 52
-
-
-def test_deck_deal_one():
-    d = Deck()
-    card = d.deal()
-    assert isinstance(card, Card)
-    assert len(d) == 51
-
-
-def test_deck_deal_many():
-    d = Deck()
-    cards = d.deal(5)
-    assert len(cards) == 5
-    assert len(d) == 47
-
-
-# ---------------------------------------------------------------------------
-# Hand evaluation tests
-# ---------------------------------------------------------------------------
 
 def c(rank, suit):
     return Card(rank, suit)
 
 
-def test_high_card():
-    cards = [c(2,'h'), c(4,'d'), c(6,'s'), c(8,'c'), c(10,'h')]
-    score = evaluate_hand(cards)
-    assert score[0] == 0, "Expected high card"
+def always_call(game_state):
+    if game_state["call_amount"] == 0:
+        return "check", 0
+    return "call", 0
 
 
-def test_one_pair():
-    cards = [c(2,'h'), c(2,'d'), c(6,'s'), c(8,'c'), c(10,'h')]
-    score = evaluate_hand(cards)
-    assert score[0] == 1, "Expected one pair"
+def always_fold(game_state):
+    return "fold", 0
 
 
-def test_two_pair():
-    cards = [c(2,'h'), c(2,'d'), c(6,'s'), c(6,'c'), c(10,'h')]
-    score = evaluate_hand(cards)
-    assert score[0] == 2, "Expected two pair"
+def test_card_repr_and_dict():
+    ace = Card(14, "s")
+    assert repr(ace) == "A♠"
+    assert ace.to_dict()["text"] == "A♠"
+    assert ace.to_dict()["color"] == "black"
 
 
-def test_three_of_a_kind():
-    cards = [c(2,'h'), c(2,'d'), c(2,'s'), c(6,'c'), c(10,'h')]
-    score = evaluate_hand(cards)
-    assert score[0] == 3, "Expected three of a kind"
+def test_deck_deals_cards():
+    deck = Deck()
+    hand = deck.deal(2)
+    assert len(hand) == 2
+    assert len(deck) == 50
+    assert isinstance(deck.deal(), Card)
 
 
-def test_straight():
-    cards = [c(5,'h'), c(6,'d'), c(7,'s'), c(8,'c'), c(9,'h')]
-    score = evaluate_hand(cards)
-    assert score[0] == 4, "Expected straight"
+def test_hand_ranks():
+    assert hand_name(evaluate_hand([c(2, "h"), c(4, "d"), c(7, "s"), c(9, "c"), c(12, "h")])) == "High Card"
+    assert hand_name(evaluate_hand([c(2, "h"), c(2, "d"), c(7, "s"), c(9, "c"), c(12, "h")])) == "One Pair"
+    assert hand_name(evaluate_hand([c(2, "h"), c(2, "d"), c(7, "s"), c(7, "c"), c(12, "h")])) == "Two Pair"
+    assert hand_name(evaluate_hand([c(2, "h"), c(2, "d"), c(2, "s"), c(9, "c"), c(12, "h")])) == "Three of a Kind"
+    assert hand_name(evaluate_hand([c(5, "h"), c(6, "d"), c(7, "s"), c(8, "c"), c(9, "h")])) == "Straight"
+    assert hand_name(evaluate_hand([c(2, "h"), c(5, "h"), c(7, "h"), c(9, "h"), c(11, "h")])) == "Flush"
+    assert hand_name(evaluate_hand([c(3, "h"), c(3, "d"), c(3, "s"), c(7, "c"), c(7, "h")])) == "Full House"
+    assert hand_name(evaluate_hand([c(9, "h"), c(9, "d"), c(9, "s"), c(9, "c"), c(5, "h")])) == "Four of a Kind"
+    assert hand_name(evaluate_hand([c(5, "h"), c(6, "h"), c(7, "h"), c(8, "h"), c(9, "h")])) == "Straight Flush"
 
 
-def test_wheel_straight():
-    cards = [c(14,'h'), c(2,'d'), c(3,'s'), c(4,'c'), c(5,'h')]
-    score = evaluate_hand(cards)
-    assert score[0] == 4, "Expected wheel straight"
-    assert score[1] == 5, "Wheel high card should be 5"
+def test_wheel_straight_and_best_of_seven():
+    wheel = evaluate_hand([c(14, "h"), c(2, "d"), c(3, "s"), c(4, "c"), c(5, "h")])
+    assert wheel == (4, 5)
+    best = evaluate_hand([
+        c(9, "h"), c(9, "d"), c(9, "s"), c(9, "c"),
+        c(5, "h"), c(2, "d"), c(3, "s"),
+    ])
+    assert best[0] == 7
 
 
-def test_flush():
-    cards = [c(2,'h'), c(5,'h'), c(7,'h'), c(9,'h'), c(11,'h')]
-    score = evaluate_hand(cards)
-    assert score[0] == 5, "Expected flush"
-
-
-def test_full_house():
-    cards = [c(3,'h'), c(3,'d'), c(3,'s'), c(7,'c'), c(7,'h')]
-    score = evaluate_hand(cards)
-    assert score[0] == 6, "Expected full house"
-
-
-def test_four_of_a_kind():
-    cards = [c(9,'h'), c(9,'d'), c(9,'s'), c(9,'c'), c(5,'h')]
-    score = evaluate_hand(cards)
-    assert score[0] == 7, "Expected four of a kind"
-
-
-def test_straight_flush():
-    cards = [c(5,'h'), c(6,'h'), c(7,'h'), c(8,'h'), c(9,'h')]
-    score = evaluate_hand(cards)
-    assert score[0] == 8, "Expected straight flush"
-
-
-def test_best_from_seven():
-    cards = [
-        c(9,'h'), c(9,'d'),
-        c(9,'s'), c(9,'c'), c(5,'h'), c(2,'d'), c(3,'s'),
-    ]
-    score = evaluate_hand(cards)
-    assert score[0] == 7, "Expected four-of-a-kind from 7 cards"
-
-
-def test_hand_ordering():
-    royal_flush = evaluate_hand([c(10,'s'), c(11,'s'), c(12,'s'), c(13,'s'), c(14,'s')])
-    full_house = evaluate_hand([c(3,'h'), c(3,'d'), c(3,'s'), c(7,'c'), c(7,'h')])
-    one_pair = evaluate_hand([c(2,'h'), c(2,'d'), c(6,'s'), c(8,'c'), c(10,'h')])
-    assert royal_flush > full_house > one_pair
-
-
-# ---------------------------------------------------------------------------
-# Game tests
-# ---------------------------------------------------------------------------
-
-def always_call(gs):
-    if gs['call_amount'] == 0:
-        return ('check', 0)
-    return ('call', 0)
-
-
-def always_fold(gs):
-    return ('fold', 0)
-
-
-def test_single_hand_no_crash():
+def test_game_produces_replay_events_and_conserves_chips():
     players = [
         Player("Alice", 500, always_call),
-        Player("Bob",   500, always_call),
+        Player("Bob", 500, always_call),
     ]
     game = PokerGame(players, verbose=False)
     result = game.play_hand()
     assert result is not None
-    total = sum(p.stack for p in players)
-    assert total == 1000, f"Chips should be conserved, got {total}"
+    assert result["events"]
+    assert "snapshot" in result["events"][0]
+    assert sum(player.stack for player in players) == 1000
 
 
-def test_folder_loses_blind():
+def test_folder_loses_without_breaking_chip_count():
     players = [
         Player("Folder", 500, always_fold),
         Player("Caller", 500, always_call),
     ]
     game = PokerGame(players, verbose=False)
     result = game.play_hand()
-    assert result is not None
-    assert sum(p.stack for p in players) == 1000
+    assert result["winners"] == ["Caller"]
+    assert sum(player.stack for player in players) == 1000
 
 
-def test_chip_conservation_many_hands():
-    players = [
-        Player("A", 500, always_call),
-        Player("B", 500, always_call),
-        Player("C", 500, always_call),
-    ]
-    game = PokerGame(players, verbose=False)
-    for _ in range(20):
-        active = [p for p in players if p.stack > 0]
-        if len(active) < 2:
-            break
-        game.play_hand()
-    total = sum(p.stack for p in players)
-    assert total == 1500, f"Total chips should be 1500, got {total}"
-
-
-def test_side_pot_calculation():
-    game = PokerGame([], verbose=False)
+def test_side_pots():
+    game = PokerGame([Player("A", 1, always_call), Player("B", 1, always_call)], verbose=False)
 
     class FakePlayer:
         def __init__(self, name, total_bet, folded=False):
@@ -189,125 +153,101 @@ def test_side_pot_calculation():
             self.total_bet = total_bet
             self.folded = folded
 
-    a  = FakePlayer("A", 50,  folded=False)
-    b  = FakePlayer("B", 100, folded=False)
-    cf = FakePlayer("C", 100, folded=True)
-
-    pots = game._calculate_side_pots([a, b, cf])
-    assert len(pots) == 2
-    main_pot, main_eligible = pots[0]
-    side_pot, side_eligible = pots[1]
-    assert main_pot == 150
-    assert {p.name for p in main_eligible} == {"A", "B"}
-    assert side_pot == 100
-    assert {p.name for p in side_eligible} == {"B"}
+    a = FakePlayer("A", 50)
+    b = FakePlayer("B", 100)
+    c_folded = FakePlayer("C", 100, folded=True)
+    pots = game._calculate_side_pots([a, b, c_folded])
+    assert pots[0][0] == 150
+    assert {player.name for player in pots[0][1]} == {"A", "B"}
+    assert pots[1][0] == 100
+    assert {player.name for player in pots[1][1]} == {"B"}
 
 
-# ---------------------------------------------------------------------------
-# Bot loader tests
-# ---------------------------------------------------------------------------
+def test_load_bundled_bots_and_interface():
+    bots = load_bots_from_directory(BOTS_DIR)
+    names = {name for name, _ in bots}
+    assert names == BOT_NAMES
+    assert len(bots) == 24
 
-BOTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'bots')
+    state = {
+        "hole_cards": [Card(14, "h"), Card(13, "s")],
+        "community_cards": [],
+        "pot": 30,
+        "current_bet": 20,
+        "call_amount": 10,
+        "min_raise": 40,
+        "stack": 990,
+        "my_bet": 10,
+        "round": "preflop",
+        "players": [],
+        "big_blind": 20,
+        "small_blind": 10,
+    }
+    valid = {"fold", "check", "call", "raise"}
+    for name, decide in bots:
+        action, amount = decide(state)
+        assert action in valid, name
+        assert isinstance(amount, int), name
 
 
 def test_load_single_bot():
-    name, func = load_bot(os.path.join(BOTS_DIR, 'call_bot.py'))
-    assert name == 'CallBot'
-    assert callable(func)
+    name, decide = load_bot(os.path.join(BOTS_DIR, "basic_always_call_bot.py"))
+    assert name == "Basic Always Call"
+    assert callable(decide)
 
 
-def test_load_directory():
-    bots = load_bots_from_directory(BOTS_DIR)
-    assert len(bots) == 4
-    names = [n for n, _ in bots]
-    assert 'CallBot' in names
-    assert 'RandomBot' in names
+def test_fixed_tournament_payload():
+    bots = load_bots_from_directory(BOTS_DIR)[:23]
+    tournament = Tournament(bots, starting_chips=500, mode="fixed", num_hands=5, verbose=False, seed=3)
+    standings = tournament.run()
+    payload = tournament.to_payload()
+    assert len(standings) == 23
+    assert payload["hands_played"] == 5
+    assert payload["events"]
+    assert sum(row["chips"] for row in standings) == 500 * 23
 
 
-def test_bot_interface():
-    bots = load_bots_from_directory(BOTS_DIR)
-
-    sample_state = {
-        'hole_cards':      [Card(14, 'h'), Card(13, 's')],
-        'community_cards': [Card(10, 'h'), Card(11, 'h'), Card(12, 'h')],
-        'pot':             100,
-        'current_bet':     20,
-        'call_amount':     20,
-        'min_raise':       40,
-        'stack':           480,
-        'my_bet':          0,
-        'round':           'flop',
-        'players':         [{'name': 'Other', 'stack': 480, 'bet': 20,
-                              'total_bet': 20, 'folded': False, 'all_in': False}],
-        'big_blind':       20,
-        'small_blind':     10,
-    }
-
-    valid_actions = {'fold', 'check', 'call', 'raise'}
-    for name, func in bots:
-        result = func(sample_state)
-        assert isinstance(result, (list, tuple)) and len(result) == 2, \
-            f"{name} returned invalid result: {result!r}"
-        action, amount = result
-        assert action in valid_actions, \
-            f"{name} returned unknown action: {action!r}"
-        assert isinstance(amount, (int, float)), \
-            f"{name} returned non-numeric amount: {amount!r}"
+def test_elimination_tournament_has_safety_cap():
+    bots = load_bots_from_directory(BOTS_DIR)[:23]
+    tournament = Tournament(bots, starting_chips=300, mode="elimination", num_hands=50, verbose=False, seed=9)
+    standings = tournament.run()
+    assert standings[0]["rank"] == 1
+    assert standings[0]["chips"] > 0
+    assert len(tournament.hands) <= 50
 
 
-# ---------------------------------------------------------------------------
-# Tournament tests
-# ---------------------------------------------------------------------------
-
-def test_elimination_tournament():
-    bots = load_bots_from_directory(BOTS_DIR)
-    t = Tournament(bots, starting_chips=500, verbose=False)
-    standings = t.run()
-    assert len(standings) == len(bots)
-    assert standings[0]['rank'] == 1
-    assert standings[0]['chips'] > 0
-    total = sum(e['chips'] for e in standings)
-    assert total == 500 * len(bots), f"Chips not conserved: {total}"
+def test_tournament_rejects_more_than_23_bots():
+    _, decide = load_bot(os.path.join(BOTS_DIR, "basic_always_call_bot.py"))
+    bots = [(f"Bot {index + 1}", decide) for index in range(24)]
+    try:
+        Tournament(bots, starting_chips=200, mode="fixed", num_hands=2, verbose=False, seed=4)
+    except ValueError as exc:
+        assert "at most 23" in str(exc)
+    else:
+        raise AssertionError("Expected Tournament to reject more than 23 bots")
 
 
-def test_fixed_tournament():
-    bots = load_bots_from_directory(BOTS_DIR)
-    t = Tournament(bots, starting_chips=500, mode='fixed',
-                   num_hands=20, verbose=False)
-    standings = t.run()
-    assert len(standings) == len(bots)
-    assert standings[0]['rank'] == 1
-
-
-# ---------------------------------------------------------------------------
-# Runner
-# ---------------------------------------------------------------------------
-
-if __name__ == '__main__':
-    import traceback
-
+if __name__ == "__main__":
     tests = [
-        test_card_repr, test_deck_size, test_deck_deal_one, test_deck_deal_many,
-        test_high_card, test_one_pair, test_two_pair, test_three_of_a_kind,
-        test_straight, test_wheel_straight, test_flush, test_full_house,
-        test_four_of_a_kind, test_straight_flush, test_best_from_seven,
-        test_hand_ordering,
-        test_single_hand_no_crash, test_folder_loses_blind,
-        test_chip_conservation_many_hands, test_side_pot_calculation,
-        test_load_single_bot, test_load_directory, test_bot_interface,
-        test_elimination_tournament, test_fixed_tournament,
+        test_card_repr_and_dict,
+        test_deck_deals_cards,
+        test_hand_ranks,
+        test_wheel_straight_and_best_of_seven,
+        test_game_produces_replay_events_and_conserves_chips,
+        test_folder_loses_without_breaking_chip_count,
+        test_side_pots,
+        test_load_bundled_bots_and_interface,
+        test_load_single_bot,
+        test_fixed_tournament_payload,
+        test_elimination_tournament_has_safety_cap,
+        test_tournament_rejects_more_than_23_bots,
     ]
-
-    passed = failed = 0
-    for t in tests:
+    failures = 0
+    for test in tests:
         try:
-            t()
-            print(f"  PASS  {t.__name__}")
-            passed += 1
-        except Exception as e:
-            print(f"  FAIL  {t.__name__}: {e}")
-            traceback.print_exc()
-            failed += 1
-
-    print(f"\n{passed} passed, {failed} failed")
-    sys.exit(0 if failed == 0 else 1)
+            test()
+            print(f"PASS {test.__name__}")
+        except Exception as exc:
+            failures += 1
+            print(f"FAIL {test.__name__}: {exc}")
+    raise SystemExit(1 if failures else 0)

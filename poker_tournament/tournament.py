@@ -1,24 +1,18 @@
-"""Tournament runner."""
+"""Tournament runner for poker bots."""
 
-from typing import Callable, Dict, List, Optional, Tuple
+from __future__ import annotations
+
+import random
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .game import PokerGame
 from .player import Player
 
+MAX_BOTS = 23
+
 
 class Tournament:
-    """
-    Runs a poker tournament between a set of bots.
-
-    Two modes
-    ---------
-    elimination (default)
-        All players share one table.  Play continues until one player
-        holds all the chips.  Players are ranked by the order they busted.
-
-    fixed
-        Play exactly ``num_hands`` hands and rank by final chip count.
-    """
+    """Run a table of bots for a fixed number of hands or until one remains."""
 
     def __init__(
         self,
@@ -26,14 +20,23 @@ class Tournament:
         starting_chips: int = 1000,
         small_blind: int = 10,
         big_blind: int = 20,
-        mode: str = 'elimination',
-        num_hands: int = 1000,
+        mode: str = "fixed",
+        num_hands: int = 25,
         verbose: bool = True,
+        seed: Optional[int] = None,
     ):
         if len(bots) < 2:
-            raise ValueError("A tournament needs at least 2 bots.")
-        if mode not in ('elimination', 'fixed'):
-            raise ValueError("mode must be 'elimination' or 'fixed'.")
+            raise ValueError("A tournament needs at least two bots.")
+        if len(bots) > MAX_BOTS:
+            raise ValueError(f"A tournament can seat at most {MAX_BOTS} bots.")
+        if starting_chips < 2:
+            raise ValueError("starting_chips must be at least 2.")
+        if small_blind < 1 or big_blind <= small_blind:
+            raise ValueError("small_blind must be positive and below big_blind.")
+        if mode not in {"fixed", "elimination"}:
+            raise ValueError("mode must be 'fixed' or 'elimination'.")
+        if num_hands < 1:
+            raise ValueError("num_hands must be at least 1.")
 
         self.bots = bots
         self.starting_chips = starting_chips
@@ -42,129 +45,119 @@ class Tournament:
         self.mode = mode
         self.num_hands = num_hands
         self.verbose = verbose
+        self.seed = seed
 
-        self._players: List[Player] = []
-        self._standings: List[Dict] = []   # Filled as players bust out
+        self.players: List[Player] = []
+        self.hands: List[Dict[str, Any]] = []
+        self.events: List[Dict[str, Any]] = []
+        self.standings: List[Dict[str, Any]] = []
 
-    # ------------------------------------------------------------------
-    # Public interface
-    # ------------------------------------------------------------------
-
-    def run(self) -> List[Dict]:
-        """
-        Run the tournament and return the final standings.
-
-        Each entry in the returned list is a dict::
-
-            {
-                'rank':   int,       # 1 = winner
-                'name':   str,
-                'chips':  int,       # chips at end of tournament
-                'hands_played': int,
-            }
-        """
-        self._players = [
-            Player(name, self.starting_chips, func)
-            for name, func in self.bots
+    def run(self) -> List[Dict[str, Any]]:
+        self.players = [
+            Player(name, self.starting_chips, decide)
+            for name, decide in self._unique_bots()
         ]
-        self._standings = []
+        self.hands = []
+        self.events = []
+        self.standings = []
 
         game = PokerGame(
-            self._players,
+            self.players,
             small_blind=self.small_blind,
             big_blind=self.big_blind,
             verbose=self.verbose,
+            rng=random.Random(self.seed),
         )
 
-        if self.mode == 'elimination':
-            self._run_elimination(game)
-        else:
-            self._run_fixed(game)
-
-        return self._final_standings(game.hand_number)
-
-    # ------------------------------------------------------------------
-    # Run modes
-    # ------------------------------------------------------------------
-
-    def _run_elimination(self, game: PokerGame) -> None:
-        bust_order: List[Player] = []
-
-        while True:
-            active = [p for p in self._players if p.stack > 0]
-            if len(active) <= 1:
-                break
-
+        while self._should_continue():
             result = game.play_hand()
             if result is None:
                 break
+            self.hands.append(result)
+            self.events.extend(result["events"])
 
-            # Check for newly busted players (stack == 0 after the hand)
-            for p in self._players:
-                if p.stack == 0 and p not in bust_order:
-                    bust_order.append(p)
-                    if self.verbose:
-                        print(f"\n  *** {p.name} has been eliminated! ***")
+        self.standings = self._build_standings()
+        self.events.append(
+            {
+                "type": "tournament_complete",
+                "message": "Tournament complete.",
+                "standings": self.standings,
+                "snapshot": self._final_snapshot(),
+            }
+        )
+        return self.standings
 
-        # Record standings (worst → best, then reverse for rank assignment)
-        total = len(self._players)
-        for rank, p in enumerate(reversed(bust_order), start=2):
-            self._standings.append({
-                'rank': total - len(bust_order) + rank - 1,
-                'name': p.name,
-                'chips': 0,
-            })
+    def print_results(self, standings: Optional[List[Dict[str, Any]]] = None) -> None:
+        rows = standings or self.standings
+        print()
+        print("Final standings")
+        print("-" * 46)
+        print(f"{'Rank':<6}{'Bot':<24}{'Chips':>10}")
+        print("-" * 46)
+        for row in rows:
+            print(f"{row['rank']:<6}{row['name']:<24}{row['chips']:>10}")
+        print("-" * 46)
+        hands = rows[0]["hands_played"] if rows else 0
+        print(f"Hands played: {hands}")
 
-        # The player(s) still with chips are the winner(s)
-        winners = [p for p in self._players if p.stack > 0]
-        for i, w in enumerate(winners, start=1):
-            self._standings.insert(0, {
-                'rank': i,
-                'name': w.name,
-                'chips': w.stack,
-            })
+    def to_payload(self) -> Dict[str, Any]:
+        return {
+            "standings": self.standings,
+            "hands": self.hands,
+            "events": self.events,
+            "hands_played": len(self.hands),
+            "config": {
+                "mode": self.mode,
+                "starting_chips": self.starting_chips,
+                "small_blind": self.small_blind,
+                "big_blind": self.big_blind,
+                "num_hands": self.num_hands,
+                "seed": self.seed,
+                "bots": [name for name, _ in self._unique_bots()],
+            },
+        }
 
-    def _run_fixed(self, game: PokerGame) -> None:
-        for _ in range(self.num_hands):
-            active = [p for p in self._players if p.stack > 0]
-            if len(active) < 2:
-                break
-            result = game.play_hand()
-            if result is None:
-                break
+    def _should_continue(self) -> bool:
+        active = [player for player in self.players if player.stack > 0]
+        if len(active) < 2:
+            return False
+        if len(self.hands) >= self.num_hands:
+            return False
+        if self.mode == "fixed":
+            return True
+        return len(active) > 1
 
-    # ------------------------------------------------------------------
-    # Standings helper
-    # ------------------------------------------------------------------
+    def _build_standings(self) -> List[Dict[str, Any]]:
+        ranked = sorted(self.players, key=lambda player: (-player.stack, player.name))
+        return [
+            {
+                "rank": index + 1,
+                "name": player.name,
+                "chips": player.stack,
+                "hands_played": len(self.hands),
+                "status": "active" if player.stack > 0 else "out",
+            }
+            for index, player in enumerate(ranked)
+        ]
 
-    def _final_standings(self, hands_played: int) -> List[Dict]:
-        if self.mode == 'fixed':
-            # Rank by final chip count
-            ranked = sorted(self._players, key=lambda p: p.stack, reverse=True)
-            self._standings = [
-                {'rank': i + 1, 'name': p.name, 'chips': p.stack}
-                for i, p in enumerate(ranked)
-            ]
+    def _final_snapshot(self) -> Dict[str, Any]:
+        return {
+            "hand_number": len(self.hands),
+            "street": "complete",
+            "dealer": "",
+            "pot": 0,
+            "community_cards": [],
+            "players": [player.public_state() for player in self.players],
+            "small_blind": self.small_blind,
+            "big_blind": self.big_blind,
+        }
 
-        # Attach hands_played to every entry (same for the whole tournament)
-        for entry in self._standings:
-            entry['hands_played'] = hands_played
-
-        return self._standings
-
-    def print_results(self, standings: Optional[List[Dict]] = None) -> None:
-        """Pretty-print the final standings table."""
-        if standings is None:
-            standings = self._standings
-        print("\n" + "=" * 55)
-        print("  FINAL STANDINGS")
-        print("=" * 55)
-        print(f"  {'Rank':<6} {'Name':<25} {'Chips':>8}")
-        print("-" * 55)
-        for entry in standings:
-            print(
-                f"  {entry['rank']:<6} {entry['name']:<25} {entry['chips']:>8}"
-            )
-        print("=" * 55)
-        print(f"  Total hands played: {standings[0].get('hands_played', '?')}")
-        print("=" * 55)
+    def _unique_bots(self) -> List[Tuple[str, Callable]]:
+        seen: Dict[str, int] = {}
+        unique = []
+        for name, decide in self.bots:
+            count = seen.get(name, 0) + 1
+            seen[name] = count
+            display_name = name if count == 1 else f"{name} {count}"
+            unique.append((display_name, decide))
+        return unique

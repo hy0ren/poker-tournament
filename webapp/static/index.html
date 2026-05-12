@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Poker Bot Tournament</title>
+    <link rel="stylesheet" href="/assets/styles.css?v=3" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Workshop Table</p>
+        <h1>Poker Bot Tournament</h1>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite">Ready</p>
+    </header>
+
+    <main class="workspace">
+      <section class="table-panel" aria-label="Poker table replay">
+        <div class="table-toolbar">
+          <div>
+            <p class="eyebrow">Replay</p>
+            <h2 id="hand-title">No hand loaded</h2>
+          </div>
+          <div class="replay-buttons" aria-label="Replay controls">
+            <button type="button" id="prev-event" title="Previous event" aria-label="Previous event">‹</button>
+            <button type="button" id="play-toggle" title="Play or pause replay" aria-label="Play or pause replay">▶</button>
+            <button type="button" id="next-event" title="Next event" aria-label="Next event">›</button>
+            <select id="replay-speed" title="Replay speed" aria-label="Replay speed">
+              <option value="1200">0.5x</option>
+              <option value="650" selected>1x</option>
+              <option value="320">2x</option>
+              <option value="140">4x</option>
+              <option value="60">Turbo</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="poker-table" id="poker-table">
+          <div class="table-felt">
+            <div class="board">
+              <div class="pot" id="pot">Pot 0</div>
+              <div class="community" id="community-cards"></div>
+            </div>
+          </div>
+          <div id="seat-layer" class="seat-layer"></div>
+        </div>
+
+        <div class="event-strip">
+          <input id="event-range" type="range" min="0" max="0" value="0" />
+          <p id="event-message">Run a tournament to see the table replay.</p>
+        </div>
+      </section>
+
+      <aside class="control-panel" aria-label="Tournament controls">
+        <section class="control-section">
+          <div class="section-heading">
+            <p class="eyebrow">Bots</p>
+            <div class="quick-actions">
+              <button type="button" id="select-all" title="Select up to 23 bots">Select 23</button>
+              <button type="button" id="clear-all" title="Clear selected bots">Clear</button>
+            </div>
+          </div>
+          <div id="bot-list" class="bot-list"></div>
+        </section>
+
+        <section class="control-section">
+          <p class="eyebrow">Settings</p>
+          <form id="settings-form" class="settings-grid">
+            <label>
+              <span>Mode</span>
+              <select id="mode" name="mode">
+                <option value="fixed">Fixed hands</option>
+                <option value="elimination">Elimination</option>
+              </select>
+            </label>
+            <label>
+              <span>Hands</span>
+              <input id="num-hands" name="num_hands" type="number" min="1" max="500" value="25" />
+            </label>
+            <label>
+              <span>Chips</span>
+              <input id="starting-chips" name="starting_chips" type="number" min="2" value="1000" />
+            </label>
+            <label>
+              <span>Small blind</span>
+              <input id="small-blind" name="small_blind" type="number" min="1" value="10" />
+            </label>
+            <label>
+              <span>Big blind</span>
+              <input id="big-blind" name="big_blind" type="number" min="2" value="20" />
+            </label>
+            <label>
+              <span>Seed</span>
+              <input id="seed" name="seed" type="number" min="0" placeholder="Random" />
+            </label>
+          </form>
+          <p id="bot-count" class="bot-count">0 selected</p>
+          <button type="button" id="run-btn" class="run-button">Run Tournament</button>
+          <div class="batch-controls">
+            <label>
+              <span>Batch runs</span>
+              <input id="batch-runs" name="batch_runs" type="number" min="1" max="250" value="50" />
+            </label>
+            <button type="button" id="batch-btn" class="run-button secondary">Run Batch</button>
+          </div>
+        </section>
+      </aside>
+
+      <section class="standings-panel" aria-label="Tournament standings">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Result</p>
+            <h2>Standings</h2>
+          </div>
+          <p id="run-meta" class="run-meta">No tournament yet</p>
+        </div>
+        <table class="standings-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Bot</th>
+              <th>Chips</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="standings-body"></tbody>
+        </table>
+      </section>
+
+      <section class="batch-panel" aria-label="Batch tournament winners">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Batch</p>
+            <h2>Most Frequent Winners</h2>
+          </div>
+          <p id="batch-meta" class="run-meta">No batch yet</p>
+        </div>
+        <table class="standings-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Bot</th>
+              <th>Wins</th>
+              <th>Win %</th>
+              <th>Avg Rank</th>
+            </tr>
+          </thead>
+          <tbody id="batch-body"></tbody>
+        </table>
+      </section>
+
+      <section class="code-panel" aria-label="Example bot code">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Examples</p>
+            <h2>Bot Code</h2>
+          </div>
+          <select id="code-picker" aria-label="Choose bot code"></select>
+        </div>
+        <pre id="bot-code"><code>Loading bots...</code></pre>
+      </section>
+    </main>
+
+    <script src="/assets/app.js?v=3"></script>
+  </body>
+</html>

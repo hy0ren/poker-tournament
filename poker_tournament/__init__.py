@@ -5,7 +5,7 @@ from .hand_eval import evaluate_hand, hand_name
 from .player import Player
 from .game import PokerGame
 from .bot_loader import load_bot, load_bots_from_directory
-from .tournament import Tournament
+from .tournament import MAX_BOTS, Tournament
 
 __all__ = [
     'Card', 'Deck',
@@ -13,5 +13,5 @@ __all__ = [
     'Player',
     'PokerGame',
     'load_bot', 'load_bots_from_directory',
-    'Tournament',
+    'MAX_BOTS', 'Tournament',
 ]

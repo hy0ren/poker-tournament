@@ -1,61 +1,106 @@
-"""Card and Deck classes for poker."""
+"""Playing cards and deck utilities for the workshop tournament."""
+
+from __future__ import annotations
 
 import random
-from typing import List
+from dataclasses import dataclass
+from typing import List, Optional
 
-RANK_NAMES = {
-    2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8',
-    9: '9', 10: 'T', 11: 'J', 12: 'Q', 13: 'K', 14: 'A',
+RANK_LABELS = {
+    2: "2",
+    3: "3",
+    4: "4",
+    5: "5",
+    6: "6",
+    7: "7",
+    8: "8",
+    9: "9",
+    10: "T",
+    11: "J",
+    12: "Q",
+    13: "K",
+    14: "A",
 }
 
-SUIT_SYMBOLS = {'h': '♥', 'd': '♦', 'c': '♣', 's': '♠'}
+SUIT_SYMBOLS = {
+    "h": "♥",
+    "d": "♦",
+    "c": "♣",
+    "s": "♠",
+}
+
+SUITS = tuple(SUIT_SYMBOLS.keys())
 
 
+@dataclass(frozen=True)
 class Card:
-    """Represents a single playing card."""
+    """A single standard playing card.
 
-    __slots__ = ('rank', 'suit')
+    Ranks are integers from 2 through 14, where 14 is an ace. Suits are the
+    one-letter strings ``h``, ``d``, ``c``, and ``s``.
+    """
 
-    def __init__(self, rank: int, suit: str):
-        """
-        Args:
-            rank: Integer 2–14 (11=Jack, 12=Queen, 13=King, 14=Ace).
-            suit: One of 'h' (hearts), 'd' (diamonds), 'c' (clubs), 's' (spades).
-        """
-        self.rank = rank
-        self.suit = suit
+    rank: int
+    suit: str
+
+    def __post_init__(self) -> None:
+        if self.rank not in RANK_LABELS:
+            raise ValueError(f"Invalid card rank: {self.rank!r}")
+        if self.suit not in SUIT_SYMBOLS:
+            raise ValueError(f"Invalid card suit: {self.suit!r}")
+
+    @property
+    def label(self) -> str:
+        return RANK_LABELS[self.rank]
+
+    @property
+    def symbol(self) -> str:
+        return SUIT_SYMBOLS[self.suit]
+
+    @property
+    def color(self) -> str:
+        return "red" if self.suit in {"h", "d"} else "black"
+
+    def to_dict(self) -> dict:
+        return {
+            "rank": self.rank,
+            "suit": self.suit,
+            "label": self.label,
+            "symbol": self.symbol,
+            "text": str(self),
+            "color": self.color,
+        }
+
+    def __str__(self) -> str:
+        return f"{self.label}{self.symbol}"
 
     def __repr__(self) -> str:
-        return f"{RANK_NAMES[self.rank]}{SUIT_SYMBOLS[self.suit]}"
-
-    def __eq__(self, other: object) -> bool:
-        return (isinstance(other, Card)
-                and self.rank == other.rank
-                and self.suit == other.suit)
-
-    def __hash__(self) -> int:
-        return hash((self.rank, self.suit))
+        return str(self)
 
 
 class Deck:
-    """A standard 52-card deck."""
+    """A shuffled 52-card deck."""
 
-    def __init__(self):
+    def __init__(self, rng: Optional[random.Random] = None):
+        self.rng = rng or random.Random()
         self.cards: List[Card] = [
-            Card(r, s)
-            for r in range(2, 15)
-            for s in ('h', 'd', 'c', 's')
+            Card(rank, suit)
+            for rank in range(2, 15)
+            for suit in SUITS
         ]
         self.shuffle()
 
     def shuffle(self) -> None:
-        random.shuffle(self.cards)
+        self.rng.shuffle(self.cards)
 
-    def deal(self, n: int = 1):
-        """Deal n cards. Returns a single Card when n==1, else a list."""
-        if n == 1:
+    def deal(self, count: int = 1):
+        if count < 1:
+            raise ValueError("count must be at least 1")
+        if count > len(self.cards):
+            raise ValueError("Cannot deal more cards than remain in the deck")
+        if count == 1:
             return self.cards.pop()
-        return [self.cards.pop() for _ in range(n)]
+        return [self.cards.pop() for _ in range(count)]
 
     def __len__(self) -> int:
         return len(self.cards)
