@@ -13,6 +13,7 @@ const els = {
   bigBlind: document.getElementById("big-blind"),
   seed: document.getElementById("seed"),
   runBtn: document.getElementById("run-btn"),
+  playBtn: document.getElementById("play-btn"),
   batchRuns: document.getElementById("batch-runs"),
   batchBtn: document.getElementById("batch-btn"),
   handTitle: document.getElementById("hand-title"),
@@ -32,24 +33,33 @@ const els = {
   codePicker: document.getElementById("code-picker"),
   botCode: document.getElementById("bot-code"),
   botCount: document.getElementById("bot-count"),
+  playPanel: document.getElementById("play-panel"),
+  playPrompt: document.getElementById("play-prompt"),
+  playerHandCards: document.getElementById("player-hand-cards"),
+  foldBtn: document.getElementById("fold-btn"),
+  checkCallBtn: document.getElementById("check-call-btn"),
+  raiseAmount: document.getElementById("raise-amount"),
+  raiseBtn: document.getElementById("raise-btn"),
+  allInBtn: document.getElementById("all-in-btn"),
 };
 
 const MAX_BOTS = 23;
-const TIER_ORDER = ["basic", "intermediate", "advanced"];
-const TIER_LABELS = {
-  basic: "Basic",
-  intermediate: "Intermediate",
-  advanced: "Advanced",
-};
+const PLAY_EVENT_DELAY_MS = 520;
+const REVEAL_EVENT_DELAY_MS = 1500;
 let bots = [];
 let replayEvents = [];
 let currentEventIndex = 0;
 let playTimer = null;
 let isBusy = false;
+let isPlayAnimating = false;
+let playAnimationTimer = null;
+let playSessionId = null;
+let pendingAction = null;
 
 loadBots();
 wireEvents();
 renderEmptyTable();
+renderPlayControls();
 
 async function loadBots() {
   setStatus("Loading bots");
@@ -70,7 +80,12 @@ async function loadBots() {
 
 function wireEvents() {
   els.runBtn.addEventListener("click", runTournament);
+  els.playBtn.addEventListener("click", startPlaySession);
   els.batchBtn.addEventListener("click", runBatch);
+  els.foldBtn.addEventListener("click", () => submitPlayerAction("fold"));
+  els.checkCallBtn.addEventListener("click", () => submitPlayerAction(pendingAction?.state?.call_amount ? "call" : "check"));
+  els.raiseBtn.addEventListener("click", () => submitPlayerAction("raise"));
+  els.allInBtn.addEventListener("click", submitAllInAction);
   els.selectAll.addEventListener("click", () => setAllBots(true));
   els.clearAll.addEventListener("click", () => setAllBots(false));
   els.prevEvent.addEventListener("click", () => stepReplay(-1));
@@ -108,7 +123,7 @@ function wireEvents() {
 
 function renderBotList() {
   els.botList.innerHTML = "";
-  els.selectAll.textContent = bots.length > MAX_BOTS ? `Select ${MAX_BOTS}` : "Select All";
+  els.selectAll.textContent = bots.length > MAX_BOTS ? `Select ${MAX_BOTS}` : "Select Lineup";
   if (!bots.length) {
     els.botList.innerHTML = `<p class="muted">No bots found.</p>`;
     updateBotCount();
@@ -117,25 +132,10 @@ function renderBotList() {
   }
 
   let selectedByDefault = 0;
-  for (const tier of TIER_ORDER) {
-    const groupBots = bots.filter((bot) => normalizedTier(bot) === tier);
-    if (!groupBots.length) continue;
-
-    const section = document.createElement("div");
-    section.className = `bot-tier bot-tier-${tier}`;
-    section.innerHTML = `
-      <div class="bot-tier-heading">
-        <span>${TIER_LABELS[tier]}</span>
-        <small>${groupBots.length} bots</small>
-      </div>
-    `;
-
-    for (const bot of groupBots) {
-      const checked = selectedByDefault < MAX_BOTS;
-      section.appendChild(createBotRow(bot, checked));
-      if (checked) selectedByDefault += 1;
-    }
-    els.botList.appendChild(section);
+  for (const bot of [...bots].sort(compareBots)) {
+    const checked = selectedByDefault < MAX_BOTS;
+    els.botList.appendChild(createBotRow(bot, checked));
+    if (checked) selectedByDefault += 1;
   }
   updateBotRowStates();
   updateBotCount();
@@ -162,7 +162,7 @@ function renderCodePicker() {
   for (const bot of [...bots].sort(compareBots)) {
     const option = document.createElement("option");
     option.value = bot.filename;
-    option.textContent = `${TIER_LABELS[normalizedTier(bot)]}: ${bot.name}`;
+    option.textContent = bot.name;
     els.codePicker.appendChild(option);
   }
   renderSelectedCode();
@@ -194,13 +194,7 @@ function selectedBots() {
     .map((checkbox) => checkbox.value);
 }
 
-function normalizedTier(bot) {
-  return TIER_ORDER.includes(bot.tier) ? bot.tier : "basic";
-}
-
 function compareBots(a, b) {
-  const tierDiff = TIER_ORDER.indexOf(normalizedTier(a)) - TIER_ORDER.indexOf(normalizedTier(b));
-  if (tierDiff !== 0) return tierDiff;
   return a.name.localeCompare(b.name);
 }
 
@@ -272,6 +266,168 @@ async function runBatch() {
   }
 }
 
+async function startPlaySession() {
+  const selected = selectedBots();
+  if (!validateSelectedCount(selected, 1)) return;
+
+  const body = playRequestBody(selected);
+  if (!body) return;
+
+  stopPlayback();
+  clearReplay();
+  playSessionId = null;
+  pendingAction = null;
+  isBusy = true;
+  updateButtonStates();
+  setStatus("Starting play session");
+
+  try {
+    const response = await fetch("/api/play/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(formatError(data.detail) || `HTTP ${response.status}`);
+    playSessionId = data.session_id;
+    applyPlayPayload(data);
+    setStatus(data.done ? "Play session complete" : "Your turn", data.done ? "success" : "");
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    isBusy = false;
+    updateButtonStates();
+  }
+}
+
+async function submitPlayerAction(action, amountOverride = null) {
+  if (!playSessionId || !pendingAction) return;
+  const amount = amountOverride !== null ? amountOverride : action === "raise" ? numberValue(els.raiseAmount) : 0;
+  isBusy = true;
+  updateButtonStates();
+  setStatus("Playing hand");
+
+  try {
+    const response = await fetch(`/api/play/${encodeURIComponent(playSessionId)}/act`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, amount }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(formatError(data.detail) || `HTTP ${response.status}`);
+    applyPlayPayload(data);
+    setStatus(data.done ? "Play session complete" : "Your turn", data.done ? "success" : "");
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    isBusy = false;
+    updateButtonStates();
+  }
+}
+
+function submitAllInAction() {
+  if (!pendingAction) return;
+  const state = pendingAction.state;
+  const allInTo = (state.my_bet || 0) + (state.stack || 0);
+  const action = state.stack <= state.call_amount ? "call" : "raise";
+  submitPlayerAction(action, allInTo);
+}
+
+function applyPlayPayload(data) {
+  const previousEventCount = replayEvents.length;
+  replayEvents = data.events || [];
+  currentEventIndex = Math.max(0, replayEvents.length - 1);
+  els.eventRange.max = Math.max(0, replayEvents.length - 1);
+  els.eventRange.value = String(currentEventIndex);
+  pendingAction = data.pending || null;
+  renderStandings({ standings: data.standings, hands_played: data.hands_played, config: { mode: "play", small_blind: numberValue(els.smallBlind), big_blind: numberValue(els.bigBlind) } });
+
+  const liveSnapshot = data.snapshot || replayEvents[currentEventIndex]?.snapshot;
+  const displaySnapshot = humanIsStillIn(liveSnapshot) ? liveSnapshot : lastSnapshotBeforeReveal(liveSnapshot);
+  const newEvents = replayEvents.slice(previousEventCount);
+  const shouldAnimateRunout = humanIsStillIn(liveSnapshot) && newEvents.length > 1 && newEvents.some((event) => ["street", "showdown", "reveal", "win"].includes(event.type));
+  if (shouldAnimateRunout) {
+    animatePlayRunout(previousEventCount, liveSnapshot, data.done);
+    return;
+  }
+
+  if (displaySnapshot) {
+    renderSnapshot(displaySnapshot);
+  } else {
+    renderCurrentEvent();
+  }
+  const lastEvent = replayEvents[currentEventIndex];
+  els.eventMessage.textContent = pendingAction
+    ? "Your turn."
+    : lastEvent?.message || (data.done ? "Play session complete." : "Playing hand.");
+  renderPlayControls();
+  updateButtonStates();
+}
+
+function humanIsStillIn(snapshot) {
+  const me = snapshot?.players?.find((player) => player.name === "You");
+  return Boolean(me && !me.folded);
+}
+
+function lastSnapshotBeforeReveal(fallbackSnapshot) {
+  for (let index = replayEvents.length - 1; index >= 0; index -= 1) {
+    const event = replayEvents[index];
+    if (!event?.snapshot || ["showdown", "reveal", "play_complete"].includes(event.type)) continue;
+    if (event.snapshot.players?.some((player) => player.name === "You" && player.folded)) {
+      currentEventIndex = index;
+      els.eventRange.value = String(currentEventIndex);
+      return event.snapshot;
+    }
+  }
+  return fallbackSnapshot;
+}
+
+function animatePlayRunout(startIndex, liveSnapshot, done) {
+  stopPlayAnimation();
+  isPlayAnimating = true;
+  renderPlayControls();
+  updateButtonStates();
+
+  let index = Math.max(0, startIndex);
+  const lastIndex = Math.max(0, replayEvents.length - 1);
+  const step = () => {
+    currentEventIndex = Math.min(index, lastIndex);
+    const event = replayEvents[currentEventIndex];
+    els.eventRange.value = String(currentEventIndex);
+    const isRevealMoment = event && ["showdown", "reveal"].includes(event.type);
+    els.eventMessage.textContent = isRevealMoment
+      ? "Cards revealed."
+      : event?.message || "";
+    if (event?.snapshot) renderSnapshot(event.snapshot);
+
+    if (index >= lastIndex) {
+      isPlayAnimating = false;
+      playAnimationTimer = null;
+      if (liveSnapshot) renderSnapshot(liveSnapshot);
+      els.eventMessage.textContent = pendingAction
+        ? "Your turn."
+        : done
+          ? "Play session complete."
+          : event?.message || "Playing hand.";
+      renderPlayControls();
+      updateButtonStates();
+      return;
+    }
+    index += 1;
+    const delay = isRevealMoment ? REVEAL_EVENT_DELAY_MS : PLAY_EVENT_DELAY_MS;
+    playAnimationTimer = window.setTimeout(step, delay);
+  };
+  step();
+}
+
+function stopPlayAnimation() {
+  if (playAnimationTimer) {
+    window.clearTimeout(playAnimationTimer);
+    playAnimationTimer = null;
+  }
+  isPlayAnimating = false;
+}
+
 function tournamentRequestBody(selected) {
   const body = {
     bots: selected,
@@ -292,9 +448,27 @@ function tournamentRequestBody(selected) {
   return body;
 }
 
-function validateSelectedCount(selected) {
-  if (selected.length < 2) {
-    setStatus("Pick at least two bots", "error");
+function playRequestBody(selected) {
+  const body = {
+    bots: selected,
+    starting_chips: numberValue(els.chips),
+    small_blind: numberValue(els.smallBlind),
+    big_blind: numberValue(els.bigBlind),
+    num_hands: numberValue(els.hands),
+  };
+  if (els.seed.value.trim() !== "") {
+    body.seed = numberValue(els.seed);
+  }
+  if (body.small_blind >= body.big_blind) {
+    setStatus("Small blind must be lower than big blind", "error");
+    return null;
+  }
+  return body;
+}
+
+function validateSelectedCount(selected, minimum = 2) {
+  if (selected.length < minimum) {
+    setStatus(minimum === 1 ? "Pick at least one bot" : "Pick at least two bots", "error");
     return false;
   }
   if (selected.length > MAX_BOTS) {
@@ -324,6 +498,7 @@ function renderSnapshot(snapshot) {
   els.pot.textContent = `Pot ${formatNumber(snapshot.pot || 0)}`;
   renderCards(els.community, snapshot.community_cards || [], 5);
   renderSeats(snapshot.players || [], snapshot.dealer);
+  renderPlayerHand(snapshot.players || []);
 }
 
 function renderSeats(players, dealerName) {
@@ -343,16 +518,27 @@ function renderSeats(players, dealerName) {
     if (player.folded) seat.classList.add("is-folded");
     if (player.all_in) seat.classList.add("is-all-in");
     if (player.name === dealerName) seat.classList.add("is-dealer");
+    if (player.name === "You") seat.classList.add("is-human");
 
-    const status = player.folded ? "Folded" : player.all_in ? "All-in" : `${formatNumber(player.stack)} chips`;
+    const stateLabel = player.folded ? "Folded" : player.all_in ? "All-in" : "In";
+    const stackLabel = `${formatNumber(player.stack)} chips`;
+    const betLabel = player.all_in
+      ? `All-in ${formatNumber(player.total_bet || player.bet || 0)}`
+      : player.bet
+        ? `Bet ${formatNumber(player.bet)}`
+        : "";
     seat.innerHTML = `
-      <div class="dealer-chip">D</div>
       <div class="seat-name">${escapeHtml(player.name)}</div>
+      <div class="seat-badges">
+        <div class="seat-state">${escapeHtml(stateLabel)}</div>
+        <div class="dealer-chip">D</div>
+      </div>
       <div class="seat-cards"></div>
-      <div class="seat-meta">${escapeHtml(status)}</div>
-      <div class="seat-bet">${player.bet ? `Bet ${formatNumber(player.bet)}` : ""}</div>
+      <div class="seat-meta">${escapeHtml(stackLabel)}</div>
+      <div class="seat-bet">${escapeHtml(betLabel)}</div>
     `;
-    renderCards(seat.querySelector(".seat-cards"), player.cards || [], 2);
+    const showBacks = player.name !== "You" && !player.folded && !(player.cards || []).length;
+    renderCards(seat.querySelector(".seat-cards"), player.cards || [], 2, showBacks);
     els.seatLayer.appendChild(seat);
   });
 }
@@ -362,22 +548,31 @@ function seatPosition(index, total) {
   const full = total > 12;
   const ultra = total > 16;
   const radiusX = narrow ? (ultra ? 36 : full ? 35 : 32) : ultra ? 46 : full ? 45 : 43;
-  const radiusY = narrow ? (ultra ? 46 : full ? 45 : 43) : ultra ? 43 : full ? 42 : 40;
+  const radiusY = narrow ? (ultra ? 38 : full ? 37 : 34) : ultra ? 43 : full ? 42 : 40;
+  const centerY = narrow ? 54 : 50;
   const angle = -90 + (360 / total) * index;
   const radians = (angle * Math.PI) / 180;
   return {
     x: 50 + Math.cos(radians) * radiusX,
-    y: 50 + Math.sin(radians) * radiusY,
+    y: centerY + Math.sin(radians) * radiusY,
   };
 }
 
-function renderCards(container, cards, slots) {
+function renderPlayerHand(players) {
+  const me = players.find((player) => player.name === "You");
+  renderCards(els.playerHandCards, me?.cards || [], 2);
+}
+
+function renderCards(container, cards, slots, faceDown = false) {
   container.innerHTML = "";
   for (let index = 0; index < slots; index += 1) {
     const card = cards[index];
     const node = document.createElement("div");
     node.className = "card";
-    if (!card) {
+    if (faceDown) {
+      node.classList.add("is-back");
+      node.setAttribute("aria-label", "Face-down card");
+    } else if (!card) {
       node.classList.add("is-empty");
       node.textContent = "";
     } else {
@@ -402,6 +597,30 @@ function renderStandings(data) {
   }
   const config = data.config;
   els.runMeta.textContent = `${config.mode}, ${data.hands_played} hands, ${config.small_blind}/${config.big_blind}`;
+}
+
+function renderPlayControls() {
+  const state = pendingAction?.state;
+  const canAct = Boolean(state);
+  const callAmount = state?.call_amount || 0;
+  const stack = state?.stack || 0;
+  const minRaise = state?.min_raise || 0;
+  const maxRaise = (state?.my_bet || 0) + stack;
+
+  els.playPanel.classList.toggle("is-active", canAct);
+  els.playPrompt.textContent = canAct
+    ? callAmount
+      ? `Call ${formatNumber(callAmount)} to continue.`
+      : "You can check or raise."
+    : playSessionId
+      ? "Waiting for the next hand or session result."
+      : "Start a play session to take a seat at the table.";
+  els.checkCallBtn.textContent = callAmount ? `Call ${formatNumber(callAmount)}` : "Check";
+  els.raiseAmount.min = String(minRaise);
+  els.raiseAmount.max = String(maxRaise);
+  if (canAct) {
+    els.raiseAmount.value = String(Math.min(maxRaise, Math.max(minRaise, callAmount ? minRaise : state.big_blind)));
+  }
 }
 
 function renderBatchResults(data) {
@@ -548,22 +767,33 @@ function updateBotRowStates() {
 }
 
 function clearReplay() {
+  stopPlayAnimation();
   replayEvents = [];
   currentEventIndex = 0;
+  playSessionId = null;
+  pendingAction = null;
+  renderPlayControls();
   stopPlayback();
 }
 
 function updateButtonStates() {
   const selected = selectedBots();
   const validSelection = selected.length >= 2 && selected.length <= MAX_BOTS;
+  const validPlaySelection = selected.length >= 1 && selected.length <= MAX_BOTS - 1;
   const hasReplay = replayEvents.length > 0;
   const atStart = currentEventIndex <= 0;
   const atEnd = !hasReplay || currentEventIndex >= replayEvents.length - 1;
 
   els.runBtn.disabled = isBusy || !validSelection;
+  els.playBtn.disabled = isBusy || !validPlaySelection;
   els.batchBtn.disabled = isBusy || !validSelection;
   els.prevEvent.disabled = !hasReplay || atStart;
   els.nextEvent.disabled = !hasReplay || atEnd;
   els.playToggle.disabled = !hasReplay || atEnd;
   els.eventRange.disabled = !hasReplay;
+  els.foldBtn.disabled = isBusy || isPlayAnimating || !pendingAction;
+  els.checkCallBtn.disabled = isBusy || isPlayAnimating || !pendingAction;
+  els.raiseBtn.disabled = isBusy || isPlayAnimating || !pendingAction || !(pendingAction.legal_actions || []).includes("raise");
+  els.allInBtn.disabled = isBusy || isPlayAnimating || !pendingAction;
+  els.raiseAmount.disabled = els.raiseBtn.disabled;
 }

@@ -5,8 +5,8 @@ from poker_tournament.hand_eval import evaluate_hand
 from poker_tournament.card import Card
 
 BOT_NAME = "Henry's Bot"
-TIER = "advanced"
-DESCRIPTION = ""
+TIER = "specialist"
+DESCRIPTION = "GTO-inspired play with targeted GodBot exploitation and timely bluffs."
 
 _MC_SAMPLES = 180
 _rng = random.Random()
@@ -61,6 +61,9 @@ def _exploit_god_bot(game_state, active_opponents):
         if street == "preflop"
         else _mc_equity(hole, community, active_opponents)
     )
+
+    if call_amount >= game_state["stack"] * 0.75 and equity < 0.84:
+        return "fold", 0
 
     god_locked = _god_bot_committed(game_state)
 
@@ -137,6 +140,9 @@ def _preflop(gs, opp_count):
 
     pot_odds = call_amount / (pot + call_amount)
 
+    if call_amount >= gs["stack"] * 0.75 and adjusted < 0.84:
+        return "fold", 0
+
     if adjusted >= 0.80:
         if _can_raise(gs):
             return "raise", _raise_to(gs, adjusted)
@@ -197,6 +203,9 @@ def _postflop(gs, opp_count):
     equity = _mc_equity(hole, community, opp_count)
     pot_odds = call_amount / (pot + call_amount) if call_amount else 0
     spr = stack / pot if pot > 0 else 10.0
+
+    if call_amount >= stack * 0.75 and equity < 0.82:
+        return "fold", 0
 
     if call_amount == 0:
         if equity >= 0.58:

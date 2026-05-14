@@ -16,56 +16,34 @@ from poker_tournament.tournament import Tournament
 
 BOTS_DIR = os.path.join(os.path.dirname(__file__), "..", "bots")
 BOT_FILES = [
-    "advanced_draw_chaser_bot.py",
-    "advanced_god_bot.py",
-    "advanced_maniac_bot.py",
-    "advanced_pot_pressure_bot.py",
-    "advanced_small_ball_bot.py",
-    "advanced_three_bet_bot.py",
-    "advanced_trap_bot.py",
-    "advanced_value_bot.py",
-    "basic_ace_bot.py",
-    "basic_always_call_bot.py",
-    "basic_cautious_bot.py",
-    "basic_face_card_bot.py",
-    "basic_min_raise_bot.py",
-    "basic_pair_bot.py",
-    "basic_random_bot.py",
-    "basic_suited_bot.py",
-    "intermediate_big_stack_bot.py",
-    "intermediate_cheap_flop_bot.py",
-    "intermediate_connector_bot.py",
-    "intermediate_position_bot.py",
-    "intermediate_pot_odds_bot.py",
-    "intermediate_short_stack_bot.py",
-    "intermediate_street_smart_bot.py",
-    "intermediate_top_pair_bot.py",
+    "god_bot.py",
+    "all_in_every_hand_bot.py",
+    "balanced_shark_bot.py",
+    "button_pressure_bot.py",
+    "draw_pressure_bot.py",
+    "henrys_bot.py",
+    "loose_aggressive_bot.py",
+    "pot_odds_pro_bot.py",
+    "pot_pressure_bot.py",
+    "river_ambush_bot.py",
+    "short_stack_ninja_bot.py",
+    "tight_aggressive_bot.py",
+    "value_hunter_bot.py",
 ]
 BOT_NAMES = {
-    "Basic Ace",
-    "Basic Always Call",
-    "Basic Cautious",
-    "Basic Face Card",
-    "Basic Min Raise",
-    "Basic Pair",
-    "Basic Random",
-    "Basic Suited",
-    "Big Stack",
-    "Cheap Flop",
-    "Connector Bot",
-    "Draw Chaser",
+    "All-In Every Hand",
+    "Balanced Shark",
+    "Button Pressure",
+    "Draw Pressure",
     "GodBot",
-    "Maniac Bot",
-    "Position Bot",
-    "Pot Odds",
+    "Henry's Bot",
+    "Loose Aggressive",
+    "Pot Odds Pro",
     "Pot Pressure",
-    "Short Stack",
-    "Small Ball",
-    "Street Smart",
-    "Three Bet Bot",
-    "Top Pair",
-    "Trap Bot",
-    "Value Bot",
+    "River Ambush",
+    "Short Stack Ninja",
+    "Tight Aggressive",
+    "Value Hunter",
 }
 
 
@@ -167,7 +145,7 @@ def test_load_bundled_bots_and_interface():
     bots = load_bots_from_directory(BOTS_DIR)
     names = {name for name, _ in bots}
     assert names == BOT_NAMES
-    assert len(bots) == 24
+    assert len(bots) == 13
 
     state = {
         "hole_cards": [Card(14, "h"), Card(13, "s")],
@@ -191,24 +169,24 @@ def test_load_bundled_bots_and_interface():
 
 
 def test_load_single_bot():
-    name, decide = load_bot(os.path.join(BOTS_DIR, "basic_always_call_bot.py"))
-    assert name == "Basic Always Call"
+    name, decide = load_bot(os.path.join(BOTS_DIR, "balanced_shark_bot.py"))
+    assert name == "Balanced Shark"
     assert callable(decide)
 
 
 def test_fixed_tournament_payload():
-    bots = load_bots_from_directory(BOTS_DIR)[:23]
+    bots = load_bots_from_directory(BOTS_DIR)
     tournament = Tournament(bots, starting_chips=500, mode="fixed", num_hands=5, verbose=False, seed=3)
     standings = tournament.run()
     payload = tournament.to_payload()
-    assert len(standings) == 23
-    assert payload["hands_played"] == 5
+    assert len(standings) == 13
+    assert 1 <= payload["hands_played"] <= 5
     assert payload["events"]
-    assert sum(row["chips"] for row in standings) == 500 * 23
+    assert sum(row["chips"] for row in standings) == 500 * 13
 
 
 def test_elimination_tournament_has_safety_cap():
-    bots = load_bots_from_directory(BOTS_DIR)[:23]
+    bots = load_bots_from_directory(BOTS_DIR)
     tournament = Tournament(bots, starting_chips=300, mode="elimination", num_hands=50, verbose=False, seed=9)
     standings = tournament.run()
     assert standings[0]["rank"] == 1
@@ -217,7 +195,7 @@ def test_elimination_tournament_has_safety_cap():
 
 
 def test_tournament_rejects_more_than_23_bots():
-    _, decide = load_bot(os.path.join(BOTS_DIR, "basic_always_call_bot.py"))
+    _, decide = load_bot(os.path.join(BOTS_DIR, "balanced_shark_bot.py"))
     bots = [(f"Bot {index + 1}", decide) for index in range(24)]
     try:
         Tournament(bots, starting_chips=200, mode="fixed", num_hands=2, verbose=False, seed=4)

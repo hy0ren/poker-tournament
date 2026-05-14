@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Poker Bot Tournament</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=3" />
+    <link rel="stylesheet" href="/assets/styles.css?v=14" />
   </head>
   <body>
     <header class="app-header">
@@ -50,6 +50,27 @@
           <input id="event-range" type="range" min="0" max="0" value="0" />
           <p id="event-message">Run a tournament to see the table replay.</p>
         </div>
+
+        <div id="play-panel" class="play-panel" aria-label="Your poker actions">
+          <div class="player-hand">
+            <p class="eyebrow">Your Hand</p>
+            <div id="player-hand-cards" class="player-hand-cards"></div>
+          </div>
+          <div>
+            <p class="eyebrow">Your Action</p>
+            <p id="play-prompt">Start a play session to take a seat at the table.</p>
+          </div>
+          <div class="play-actions">
+            <button type="button" id="fold-btn">Fold</button>
+            <button type="button" id="check-call-btn">Check</button>
+            <label>
+              <span>Raise to</span>
+              <input id="raise-amount" type="number" min="0" value="0" />
+            </label>
+            <button type="button" id="raise-btn">Raise</button>
+            <button type="button" id="all-in-btn" class="danger">All In</button>
+          </div>
+        </div>
       </section>
 
       <aside class="control-panel" aria-label="Tournament controls">
@@ -57,7 +78,7 @@
           <div class="section-heading">
             <p class="eyebrow">Bots</p>
             <div class="quick-actions">
-              <button type="button" id="select-all" title="Select up to 23 bots">Select 23</button>
+              <button type="button" id="select-all" title="Select the full bot lineup">Select Lineup</button>
               <button type="button" id="clear-all" title="Clear selected bots">Clear</button>
             </div>
           </div>
@@ -97,6 +118,7 @@
           </form>
           <p id="bot-count" class="bot-count">0 selected</p>
           <button type="button" id="run-btn" class="run-button">Run Tournament</button>
+          <button type="button" id="play-btn" class="run-button play">Play This Table</button>
           <div class="batch-controls">
             <label>
               <span>Batch runs</span>
@@ -162,6 +184,6 @@
       </section>
     </main>
 
-    <script src="/assets/app.js?v=3"></script>
+    <script src="/assets/app.js?v=14"></script>
   </body>
 </html>

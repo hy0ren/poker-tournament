@@ -22,9 +22,11 @@ if ROOT_DIR not in sys.path:
 
 from poker_tournament import Tournament, load_bot  # noqa: E402
 from poker_tournament.tournament import MAX_BOTS  # noqa: E402
+from webapp.play_session import PlaySession  # noqa: E402
 
 BOTS_DIR = os.path.join(ROOT_DIR, "bots")
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+PLAY_SESSIONS: Dict[str, PlaySession] = {}
 
 
 class BotInfo(BaseModel):
@@ -106,6 +108,35 @@ class BatchResponse(BaseModel):
     runs: int
     duration_ms: int
     config: Dict[str, Any]
+
+
+class PlayStartRequest(BaseModel):
+    bots: List[str] = Field(..., min_length=1, max_length=MAX_BOTS - 1)
+    starting_chips: int = Field(1000, ge=2, le=1_000_000)
+    small_blind: int = Field(10, ge=1, le=1_000_000)
+    big_blind: int = Field(20, ge=2, le=1_000_000)
+    num_hands: int = Field(25, ge=1, le=500)
+    seed: Optional[int] = Field(None, ge=0, le=2_147_483_647)
+
+    @field_validator("bots")
+    @classmethod
+    def check_bot_filenames(cls, value: List[str]) -> List[str]:
+        return TournamentRequest.check_bot_filenames(value)
+
+
+class PlayActionRequest(BaseModel):
+    action: str
+    amount: int = Field(0, ge=0, le=1_000_000)
+
+
+class PlayResponse(BaseModel):
+    session_id: str
+    pending: Optional[Dict[str, Any]]
+    done: bool
+    events: List[Dict[str, Any]]
+    snapshot: Dict[str, Any]
+    hands_played: int
+    standings: List[StandingEntry]
 
 
 def create_app() -> FastAPI:
@@ -218,6 +249,29 @@ def create_app() -> FastAPI:
                 "bots": request.bots,
             },
         )
+
+    @app.post("/api/play/start", response_model=PlayResponse)
+    def start_play_session(request: PlayStartRequest) -> PlayResponse:
+        _validate_blinds(request)
+        bots = _load_selected_bots(request.bots)
+        session = PlaySession(
+            bots=bots,
+            starting_chips=request.starting_chips,
+            small_blind=request.small_blind,
+            big_blind=request.big_blind,
+            num_hands=request.num_hands,
+            seed=request.seed,
+        )
+        PLAY_SESSIONS[session.id] = session
+        return PlayResponse(**session.start())
+
+    @app.post("/api/play/{session_id}/act", response_model=PlayResponse)
+    def act_play_session(session_id: str, request: PlayActionRequest) -> PlayResponse:
+        session = PLAY_SESSIONS.get(session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Play session not found.")
+        payload = session.act(request.action, request.amount)
+        return PlayResponse(**payload)
 
     if os.path.isdir(STATIC_DIR):
         app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")

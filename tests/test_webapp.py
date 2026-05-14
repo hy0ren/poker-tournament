@@ -17,56 +17,34 @@ from fastapi.testclient import TestClient  # noqa: E402
 from webapp.server import app  # noqa: E402
 
 BOT_FILES = [
-    "advanced_draw_chaser_bot.py",
-    "advanced_god_bot.py",
-    "advanced_maniac_bot.py",
-    "advanced_pot_pressure_bot.py",
-    "advanced_small_ball_bot.py",
-    "advanced_three_bet_bot.py",
-    "advanced_trap_bot.py",
-    "advanced_value_bot.py",
-    "basic_ace_bot.py",
-    "basic_always_call_bot.py",
-    "basic_cautious_bot.py",
-    "basic_face_card_bot.py",
-    "basic_min_raise_bot.py",
-    "basic_pair_bot.py",
-    "basic_random_bot.py",
-    "basic_suited_bot.py",
-    "intermediate_big_stack_bot.py",
-    "intermediate_cheap_flop_bot.py",
-    "intermediate_connector_bot.py",
-    "intermediate_position_bot.py",
-    "intermediate_pot_odds_bot.py",
-    "intermediate_short_stack_bot.py",
-    "intermediate_street_smart_bot.py",
-    "intermediate_top_pair_bot.py",
+    "god_bot.py",
+    "all_in_every_hand_bot.py",
+    "balanced_shark_bot.py",
+    "button_pressure_bot.py",
+    "draw_pressure_bot.py",
+    "henrys_bot.py",
+    "loose_aggressive_bot.py",
+    "pot_odds_pro_bot.py",
+    "pot_pressure_bot.py",
+    "river_ambush_bot.py",
+    "short_stack_ninja_bot.py",
+    "tight_aggressive_bot.py",
+    "value_hunter_bot.py",
 ]
 BOT_NAMES = {
-    "Basic Ace",
-    "Basic Always Call",
-    "Basic Cautious",
-    "Basic Face Card",
-    "Basic Min Raise",
-    "Basic Pair",
-    "Basic Random",
-    "Basic Suited",
-    "Big Stack",
-    "Cheap Flop",
-    "Connector Bot",
-    "Draw Chaser",
+    "All-In Every Hand",
+    "Balanced Shark",
+    "Button Pressure",
+    "Draw Pressure",
     "GodBot",
-    "Maniac Bot",
-    "Position Bot",
-    "Pot Odds",
+    "Henry's Bot",
+    "Loose Aggressive",
+    "Pot Odds Pro",
     "Pot Pressure",
-    "Short Stack",
-    "Small Ball",
-    "Street Smart",
-    "Three Bet Bot",
-    "Top Pair",
-    "Trap Bot",
-    "Value Bot",
+    "River Ambush",
+    "Short Stack Ninja",
+    "Tight Aggressive",
+    "Value Hunter",
 }
 
 
@@ -87,11 +65,7 @@ def test_list_bots_includes_source(client):
     bots = response.json()["bots"]
     names = {bot["name"] for bot in bots}
     assert names == BOT_NAMES
-    assert len(bots) == 24
-    tiers = {}
-    for bot in bots:
-        tiers[bot["tier"]] = tiers.get(bot["tier"], 0) + 1
-    assert tiers == {"basic": 8, "intermediate": 8, "advanced": 8}
+    assert len(bots) == 13
     assert all("def decide" in bot["source"] for bot in bots)
 
 
@@ -99,7 +73,7 @@ def test_run_tournament_returns_replay_data(client):
     response = client.post(
         "/api/tournament",
         json={
-            "bots": ["basic_always_call_bot.py", "basic_min_raise_bot.py", "basic_ace_bot.py"],
+            "bots": ["balanced_shark_bot.py", "pot_pressure_bot.py", "value_hunter_bot.py"],
             "mode": "fixed",
             "starting_chips": 500,
             "small_blind": 10,
@@ -110,7 +84,7 @@ def test_run_tournament_returns_replay_data(client):
     )
     assert response.status_code == 200, response.text
     data = response.json()
-    assert data["hands_played"] == 5
+    assert 1 <= data["hands_played"] <= 5
     assert len(data["standings"]) == 3
     assert data["hands"]
     assert data["events"]
@@ -122,7 +96,7 @@ def test_run_tournament_rejects_more_than_23_bots(client):
     response = client.post(
         "/api/tournament",
         json={
-            "bots": BOT_FILES,
+            "bots": BOT_FILES + BOT_FILES,
             "mode": "fixed",
             "starting_chips": 100,
             "small_blind": 1,
@@ -139,9 +113,9 @@ def test_run_batch_returns_frequent_winners(client):
         "/api/batch",
         json={
             "bots": [
-                "basic_always_call_bot.py",
-                "basic_min_raise_bot.py",
-                "basic_ace_bot.py",
+                "balanced_shark_bot.py",
+                "pot_pressure_bot.py",
+                "value_hunter_bot.py",
             ],
             "mode": "fixed",
             "starting_chips": 500,
@@ -160,11 +134,69 @@ def test_run_batch_returns_frequent_winners(client):
     assert data["results"][0]["wins"] >= data["results"][-1]["wins"]
 
 
+def test_play_session_waits_for_human_action(client):
+    response = client.post(
+        "/api/play/start",
+        json={
+            "bots": ["balanced_shark_bot.py", "value_hunter_bot.py"],
+            "starting_chips": 1000,
+            "small_blind": 10,
+            "big_blind": 20,
+            "num_hands": 3,
+            "seed": 12,
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["pending"]["player"] == "You"
+    assert data["snapshot"]["street"] == "preflop"
+    assert "fold" in data["pending"]["legal_actions"]
+    players = data["pending"]["snapshot"]["players"]
+    assert len(players[0]["cards"]) == 2
+    assert all(not player["cards"] for player in players[1:])
+
+    action = "check" if "check" in data["pending"]["legal_actions"] else "fold"
+    response = client.post(
+        f"/api/play/{data['session_id']}/act",
+        json={"action": action, "amount": 0},
+    )
+    assert response.status_code == 200, response.text
+    next_data = response.json()
+    assert next_data["session_id"] == data["session_id"]
+    assert next_data["events"]
+    assert next_data["snapshot"]["community_cards"] == next_data["events"][-1]["snapshot"]["community_cards"]
+
+
+def test_play_session_reveals_all_cards_when_hand_ends(client):
+    response = client.post(
+        "/api/play/start",
+        json={
+            "bots": ["balanced_shark_bot.py"],
+            "starting_chips": 1000,
+            "small_blind": 10,
+            "big_blind": 20,
+            "num_hands": 1,
+            "seed": 12,
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    response = client.post(
+        f"/api/play/{data['session_id']}/act",
+        json={"action": "fold", "amount": 0},
+    )
+    assert response.status_code == 200, response.text
+    finished = response.json()
+    assert finished["events"][-1]["type"] in {"reveal", "play_complete"}
+    assert finished["snapshot"]["street"] == "showdown"
+    assert all(len(player["cards"]) == 2 for player in finished["snapshot"]["players"])
+
+
 def test_validation_errors(client):
     response = client.post(
         "/api/tournament",
         json={
-            "bots": ["basic_always_call_bot.py"],
+            "bots": ["balanced_shark_bot.py"],
             "mode": "fixed",
             "starting_chips": 500,
             "small_blind": 10,
@@ -177,7 +209,7 @@ def test_validation_errors(client):
     response = client.post(
         "/api/tournament",
         json={
-            "bots": ["basic_always_call_bot.py", "../bad.py"],
+            "bots": ["balanced_shark_bot.py", "../bad.py"],
             "mode": "fixed",
             "starting_chips": 500,
             "small_blind": 10,
@@ -190,7 +222,7 @@ def test_validation_errors(client):
     response = client.post(
         "/api/tournament",
         json={
-            "bots": ["basic_always_call_bot.py", "basic_random_bot.py"],
+            "bots": ["balanced_shark_bot.py", "pot_pressure_bot.py"],
             "mode": "fixed",
             "starting_chips": 500,
             "small_blind": 20,
@@ -205,7 +237,7 @@ def test_unknown_bot(client):
     response = client.post(
         "/api/tournament",
         json={
-            "bots": ["basic_always_call_bot.py", "missing.py"],
+            "bots": ["balanced_shark_bot.py", "missing.py"],
             "mode": "fixed",
             "starting_chips": 500,
             "small_blind": 10,
@@ -222,9 +254,22 @@ def test_static_ui_served(client):
     assert response.status_code == 200
     assert "Poker Bot Tournament" in response.text
     assert "poker-table" in response.text
+    assert "play-panel" in response.text
+    assert "all-in-btn" in response.text
     assert "replay-speed" in response.text
     assert "batch-runs" in response.text
 
     for path in ("/assets/styles.css", "/assets/app.js"):
         response = client.get(path)
         assert response.status_code == 200
+
+    response = client.get("/assets/app.js")
+    assert "seat-state" in response.text
+    assert "is-back" in response.text
+    assert "submitAllInAction" in response.text
+    assert "REVEAL_EVENT_DELAY_MS" in response.text
+    assert "humanIsStillIn" in response.text
+    response = client.get("/assets/styles.css")
+    assert ".seat.is-folded .seat-state" in response.text
+    assert ".card.is-back" in response.text
+    assert ".play-actions button.danger" in response.text

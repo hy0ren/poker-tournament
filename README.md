@@ -2,7 +2,7 @@
 
 A workshop-friendly Texas Hold'em bot tournament with:
 
-- Tiny example bots in `bots/`
+- A 13-bot competitive lineup in `bots/`
 - A Python engine with no runtime dependencies
 - A FastAPI web demo with a poker-table replay UI
 - A simple bot contract: write `decide(game_state)` and return an action
@@ -16,9 +16,9 @@ The app caps each tournament at 23 bots because a standard deck can seat at most
 Run the bundled bots from the command line:
 
 ```bash
-python run_tournament.py bots/basic_always_call_bot.py \
-  bots/basic_min_raise_bot.py \
-  bots/advanced_god_bot.py \
+python run_tournament.py bots/god_bot.py \
+  bots/balanced_shark_bot.py \
+  bots/all_in_every_hand_bot.py \
   --mode fixed --hands 25 --seed 7
 ```
 
@@ -35,36 +35,25 @@ Open <http://127.0.0.1:8000>.
 
 The browser demo includes replay controls, a speed selector from `0.5x` through `Turbo`, and a batch runner that can run 50 tournaments at once.
 
-## Example Bots
+## Bot Lineup
 
-The bundled bots are grouped into 8 basic, 8 intermediate, and 8 advanced examples:
+The bundled lineup has 13 public bots: Henry's Bot, GodBot, one all-in-every-hand bot, and 10 competent strategy bots that value bet, respect pot odds, and sometimes bluff in reasonable spots.
 
 | File | Bot | Idea |
 | --- | --- | --- |
-| `bots/basic_always_call_bot.py` | Basic Always Call | Check for free, otherwise call |
-| `bots/basic_cautious_bot.py` | Basic Cautious | Check for free, fold to bets |
-| `bots/basic_min_raise_bot.py` | Basic Min Raise | Open with the minimum raise |
-| `bots/basic_random_bot.py` | Basic Random | Pick a simple legal action at random |
-| `bots/basic_ace_bot.py` | Basic Ace | Continue with any ace |
-| `bots/basic_pair_bot.py` | Basic Pair | Continue with pocket pairs |
-| `bots/basic_suited_bot.py` | Basic Suited | Continue with suited cards |
-| `bots/basic_face_card_bot.py` | Basic Face Card | Continue with queen or better |
-| `bots/intermediate_cheap_flop_bot.py` | Cheap Flop | See cheap flops, fold expensive ones |
-| `bots/intermediate_connector_bot.py` | Connector Bot | Continue with connected cards |
-| `bots/intermediate_short_stack_bot.py` | Short Stack | Protect a small stack |
-| `bots/intermediate_big_stack_bot.py` | Big Stack | Raise when deep stacked |
-| `bots/intermediate_pot_odds_bot.py` | Pot Odds | Call when the price is small vs the pot |
-| `bots/intermediate_position_bot.py` | Position Bot | Raise when few opponents remain |
-| `bots/intermediate_top_pair_bot.py` | Top Pair | Raise when pairing the board high card |
-| `bots/intermediate_street_smart_bot.py` | Street Smart | Use different preflop/postflop rules |
-| `bots/advanced_three_bet_bot.py` | Three Bet Bot | Re-raise premium preflop hands |
-| `bots/advanced_pot_pressure_bot.py` | Pot Pressure | Size raises from pot size |
-| `bots/advanced_small_ball_bot.py` | Small Ball | Call small bets, avoid large pressure |
-| `bots/advanced_maniac_bot.py` | Maniac Bot | Raise and re-raise wide |
-| `bots/advanced_value_bot.py` | Value Bot | Bet big with made hands |
-| `bots/advanced_trap_bot.py` | Trap Bot | Slowplay then raise river |
-| `bots/advanced_draw_chaser_bot.py` | Draw Chaser | Chase draws at the right price |
-| `bots/advanced_god_bot.py` | GodBot | Advanced hand strength, draw, and pot odds logic |
+| `bots/god_bot.py` | GodBot | Strong hand strength, draw, and pot odds logic |
+| `bots/henrys_bot.py` | Henry's Bot | GTO-inspired play with targeted GodBot exploitation |
+| `bots/all_in_every_hand_bot.py` | All-In Every Hand | Shoves whenever it can act |
+| `bots/balanced_shark_bot.py` | Balanced Shark | Balanced value betting, pot-odds calls, and measured bluffs |
+| `bots/button_pressure_bot.py` | Button Pressure | Applies pressure when fewer opponents remain |
+| `bots/draw_pressure_bot.py` | Draw Pressure | Semi-bluffs strong draws at reasonable prices |
+| `bots/loose_aggressive_bot.py` | Loose Aggressive | Plays wider ranges with controlled bluff frequency |
+| `bots/pot_odds_pro_bot.py` | Pot Odds Pro | Calls efficiently and mixes smaller bluffs |
+| `bots/pot_pressure_bot.py` | Pot Pressure | Sizes bets around the pot to force difficult calls |
+| `bots/river_ambush_bot.py` | River Ambush | Keeps ranges tighter early, then attacks rivers |
+| `bots/short_stack_ninja_bot.py` | Short Stack Ninja | Commits decisively when stacks get shallow |
+| `bots/tight_aggressive_bot.py` | Tight Aggressive | Starts selective and bets good hands hard |
+| `bots/value_hunter_bot.py` | Value Hunter | Extracts value while keeping a few credible bluffs |
 
 ## Writing a Bot
 
@@ -124,7 +113,7 @@ Example:
 curl -s http://127.0.0.1:8000/api/tournament \
   -H 'Content-Type: application/json' \
   -d '{
-    "bots": ["basic_always_call_bot.py", "basic_min_raise_bot.py", "basic_ace_bot.py"],
+    "bots": ["balanced_shark_bot.py", "pot_pressure_bot.py", "value_hunter_bot.py"],
     "mode": "fixed",
     "starting_chips": 1000,
     "small_blind": 10,
@@ -146,7 +135,7 @@ poker_tournament/
   game.py          single-table Hold'em engine
   tournament.py    tournament runner
   bot_loader.py    bot file importer
-bots/              workshop bot examples
+bots/              competitive bot lineup
 webapp/            FastAPI app and static UI
 tests/             engine and web tests
 ```
