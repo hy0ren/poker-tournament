@@ -6,9 +6,8 @@ import random
 import uuid
 from typing import Any, Callable, Dict, Generator, List, Optional, Sequence, Tuple
 
-from poker_tournament.card import Card, Deck
+from poker_tournament.card import Deck
 from poker_tournament.game import MAX_SEATED_PLAYERS, VALID_ACTIONS, PokerGame
-from poker_tournament.hand_eval import evaluate_hand, hand_name
 from poker_tournament.player import Player
 
 HUMAN_NAME = "You"

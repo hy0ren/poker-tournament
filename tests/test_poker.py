@@ -203,29 +203,3 @@ def test_tournament_rejects_more_than_23_bots():
         assert "at most 23" in str(exc)
     else:
         raise AssertionError("Expected Tournament to reject more than 23 bots")
-
-
-if __name__ == "__main__":
-    tests = [
-        test_card_repr_and_dict,
-        test_deck_deals_cards,
-        test_hand_ranks,
-        test_wheel_straight_and_best_of_seven,
-        test_game_produces_replay_events_and_conserves_chips,
-        test_folder_loses_without_breaking_chip_count,
-        test_side_pots,
-        test_load_bundled_bots_and_interface,
-        test_load_single_bot,
-        test_fixed_tournament_payload,
-        test_elimination_tournament_has_safety_cap,
-        test_tournament_rejects_more_than_23_bots,
-    ]
-    failures = 0
-    for test in tests:
-        try:
-            test()
-            print(f"PASS {test.__name__}")
-        except Exception as exc:
-            failures += 1
-            print(f"FAIL {test.__name__}: {exc}")
-    raise SystemExit(1 if failures else 0)

@@ -269,6 +269,8 @@ def test_static_ui_served(client):
     assert "submitAllInAction" in response.text
     assert "REVEAL_EVENT_DELAY_MS" in response.text
     assert "humanIsStillIn" in response.text
+    assert "scaledPlayDelay" in response.text
+    assert "foldedHandReveal" in response.text
     response = client.get("/assets/styles.css")
     assert ".seat.is-folded .seat-state" in response.text
     assert ".card.is-back" in response.text

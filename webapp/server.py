@@ -47,7 +47,7 @@ class TournamentRequest(BaseModel):
     starting_chips: int = Field(1000, ge=2, le=1_000_000)
     small_blind: int = Field(10, ge=1, le=1_000_000)
     big_blind: int = Field(20, ge=2, le=1_000_000)
-    num_hands: int = Field(25, ge=1, le=500)
+    num_hands: int = Field(500, ge=1, le=500)
     seed: Optional[int] = Field(None, ge=0, le=2_147_483_647)
     verbose: bool = Field(False)
 
@@ -115,7 +115,7 @@ class PlayStartRequest(BaseModel):
     starting_chips: int = Field(1000, ge=2, le=1_000_000)
     small_blind: int = Field(10, ge=1, le=1_000_000)
     big_blind: int = Field(20, ge=2, le=1_000_000)
-    num_hands: int = Field(25, ge=1, le=500)
+    num_hands: int = Field(500, ge=1, le=500)
     seed: Optional[int] = Field(None, ge=0, le=2_147_483_647)
 
     @field_validator("bots")

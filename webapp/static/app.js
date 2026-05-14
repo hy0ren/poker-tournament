@@ -46,6 +46,7 @@ const els = {
 const MAX_BOTS = 23;
 const PLAY_EVENT_DELAY_MS = 520;
 const REVEAL_EVENT_DELAY_MS = 1500;
+const NORMAL_REPLAY_DELAY_MS = 650;
 let bots = [];
 let replayEvents = [];
 let currentEventIndex = 0;
@@ -343,16 +344,21 @@ function applyPlayPayload(data) {
   renderStandings({ standings: data.standings, hands_played: data.hands_played, config: { mode: "play", small_blind: numberValue(els.smallBlind), big_blind: numberValue(els.bigBlind) } });
 
   const liveSnapshot = data.snapshot || replayEvents[currentEventIndex]?.snapshot;
-  const displaySnapshot = humanIsStillIn(liveSnapshot) ? liveSnapshot : lastSnapshotBeforeReveal(liveSnapshot);
   const newEvents = replayEvents.slice(previousEventCount);
+  const foldedReveal = foldedHandReveal(newEvents);
+  if (foldedReveal) {
+    showFoldedHandReveal(foldedReveal, liveSnapshot, data.done);
+    return;
+  }
+
   const shouldAnimateRunout = humanIsStillIn(liveSnapshot) && newEvents.length > 1 && newEvents.some((event) => ["street", "showdown", "reveal", "win"].includes(event.type));
   if (shouldAnimateRunout) {
     animatePlayRunout(previousEventCount, liveSnapshot, data.done);
     return;
   }
 
-  if (displaySnapshot) {
-    renderSnapshot(displaySnapshot);
+  if (liveSnapshot) {
+    renderSnapshot(liveSnapshot);
   } else {
     renderCurrentEvent();
   }
@@ -369,17 +375,50 @@ function humanIsStillIn(snapshot) {
   return Boolean(me && !me.folded);
 }
 
-function lastSnapshotBeforeReveal(fallbackSnapshot) {
-  for (let index = replayEvents.length - 1; index >= 0; index -= 1) {
-    const event = replayEvents[index];
-    if (!event?.snapshot || ["showdown", "reveal", "play_complete"].includes(event.type)) continue;
-    if (event.snapshot.players?.some((player) => player.name === "You" && player.folded)) {
-      currentEventIndex = index;
-      els.eventRange.value = String(currentEventIndex);
-      return event.snapshot;
-    }
+function foldedHandReveal(events) {
+  const humanFolded = events.some((event) => event.type === "action" && event.player === "You" && event.action === "fold");
+  if (!humanFolded) return null;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    if (events[index].type === "reveal" && events[index].snapshot) return events[index];
   }
-  return fallbackSnapshot;
+  return null;
+}
+
+function showFoldedHandReveal(revealEvent, liveSnapshot, done) {
+  stopPlayAnimation();
+  isPlayAnimating = true;
+  const revealIndex = replayEvents.indexOf(revealEvent);
+  if (revealIndex >= 0) {
+    currentEventIndex = revealIndex;
+    els.eventRange.value = String(currentEventIndex);
+  }
+  renderSnapshot(revealEvent.snapshot);
+  els.eventMessage.textContent = "Cards revealed.";
+  renderPlayControls();
+  updateButtonStates();
+
+  const shouldResume = pendingAction && liveSnapshot && liveSnapshot !== revealEvent.snapshot;
+  if (!shouldResume) {
+    isPlayAnimating = false;
+    renderPlayControls();
+    updateButtonStates();
+    return;
+  }
+
+  playAnimationTimer = window.setTimeout(() => {
+    isPlayAnimating = false;
+    playAnimationTimer = null;
+    currentEventIndex = Math.max(0, replayEvents.length - 1);
+    els.eventRange.value = String(currentEventIndex);
+    renderSnapshot(liveSnapshot);
+    els.eventMessage.textContent = pendingAction
+      ? "Your turn."
+      : done
+        ? "Play session complete."
+        : "Playing hand.";
+    renderPlayControls();
+    updateButtonStates();
+  }, scaledPlayDelay(REVEAL_EVENT_DELAY_MS));
 }
 
 function animatePlayRunout(startIndex, liveSnapshot, done) {
@@ -414,10 +453,16 @@ function animatePlayRunout(startIndex, liveSnapshot, done) {
       return;
     }
     index += 1;
-    const delay = isRevealMoment ? REVEAL_EVENT_DELAY_MS : PLAY_EVENT_DELAY_MS;
+    const delay = scaledPlayDelay(isRevealMoment ? REVEAL_EVENT_DELAY_MS : PLAY_EVENT_DELAY_MS);
     playAnimationTimer = window.setTimeout(step, delay);
   };
   step();
+}
+
+function scaledPlayDelay(baseDelay) {
+  const speedDelay = Number(els.replaySpeed.value) || NORMAL_REPLAY_DELAY_MS;
+  const scaledDelay = baseDelay * (speedDelay / NORMAL_REPLAY_DELAY_MS);
+  return Math.max(40, Math.round(scaledDelay));
 }
 
 function stopPlayAnimation() {
