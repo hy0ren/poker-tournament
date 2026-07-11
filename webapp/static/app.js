@@ -5,6 +5,8 @@ const els = {
   botList: document.getElementById("bot-list"),
   selectAll: document.getElementById("select-all"),
   clearAll: document.getElementById("clear-all"),
+  randomLineup: document.getElementById("random-lineup"),
+  botSearch: document.getElementById("bot-search"),
   settingsForm: document.getElementById("settings-form"),
   mode: document.getElementById("mode"),
   hands: document.getElementById("num-hands"),
@@ -22,6 +24,7 @@ const els = {
   seatLayer: document.getElementById("seat-layer"),
   eventRange: document.getElementById("event-range"),
   eventMessage: document.getElementById("event-message"),
+  eventCounter: document.getElementById("event-counter"),
   prevEvent: document.getElementById("prev-event"),
   nextEvent: document.getElementById("next-event"),
   playToggle: document.getElementById("play-toggle"),
@@ -41,6 +44,7 @@ const els = {
   raiseAmount: document.getElementById("raise-amount"),
   raiseBtn: document.getElementById("raise-btn"),
   allInBtn: document.getElementById("all-in-btn"),
+  celebration: document.getElementById("celebration"),
 };
 
 const MAX_BOTS = 23;
@@ -89,6 +93,8 @@ function wireEvents() {
   els.allInBtn.addEventListener("click", submitAllInAction);
   els.selectAll.addEventListener("click", () => setAllBots(true));
   els.clearAll.addEventListener("click", () => setAllBots(false));
+  els.randomLineup.addEventListener("click", selectRandomLineup);
+  els.botSearch.addEventListener("input", filterBots);
   els.prevEvent.addEventListener("click", () => stepReplay(-1));
   els.nextEvent.addEventListener("click", () => stepReplay(1));
   els.playToggle.addEventListener("click", togglePlayback);
@@ -120,6 +126,7 @@ function wireEvents() {
       renderEmptyTable();
     }
   });
+  window.addEventListener("keydown", handleReplayKeys);
 }
 
 function renderBotList() {
@@ -139,6 +146,7 @@ function renderBotList() {
     if (checked) selectedByDefault += 1;
   }
   updateBotRowStates();
+  filterBots();
   updateBotCount();
   updateButtonStates();
 }
@@ -146,16 +154,62 @@ function renderBotList() {
 function createBotRow(bot, checked) {
   const label = document.createElement("label");
   label.className = "bot-row";
+  label.dataset.search = `${bot.name} ${bot.description} ${bot.tier || ""}`.toLowerCase();
 
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
   checkbox.value = bot.filename;
   checkbox.checked = checked;
 
+  const avatar = document.createElement("span");
+  avatar.className = "bot-avatar";
+  avatar.setAttribute("aria-hidden", "true");
+  avatar.textContent = botAvatar(bot);
+
   const text = document.createElement("span");
+  text.className = "bot-copy";
   text.innerHTML = `<strong>${escapeHtml(bot.name)}</strong><small>${escapeHtml(bot.description)}</small>`;
-  label.append(checkbox, text);
+
+  const tier = document.createElement("span");
+  tier.className = "tier-badge";
+  tier.textContent = bot.tier || "Bot";
+  label.append(checkbox, avatar, text, tier);
   return label;
+}
+
+function botAvatar(bot) {
+  const name = bot.name.toLowerCase();
+  if (name.includes("shark")) return "🦈";
+  if (name.includes("ninja")) return "🥷";
+  if (name.includes("god")) return "⚡";
+  if (name.includes("hunter")) return "🎯";
+  if (name.includes("pressure")) return "🔥";
+  if (name.includes("odds")) return "🧮";
+  if (name.includes("all-in")) return "🚀";
+  if (name.includes("ambush")) return "🦊";
+  return "♠️";
+}
+
+function filterBots() {
+  const query = els.botSearch.value.trim().toLowerCase();
+  for (const row of els.botList.querySelectorAll(".bot-row")) {
+    row.hidden = Boolean(query) && !row.dataset.search.includes(query);
+  }
+}
+
+function selectRandomLineup() {
+  clearReplay();
+  const checkboxes = [...els.botList.querySelectorAll('input[type="checkbox"]')];
+  const shuffled = [...checkboxes].sort(() => Math.random() - 0.5);
+  const picked = new Set(shuffled.slice(0, Math.min(6, shuffled.length)));
+  checkboxes.forEach((checkbox) => { checkbox.checked = picked.has(checkbox); });
+  els.botSearch.value = "";
+  filterBots();
+  updateBotRowStates();
+  updateBotCount();
+  renderEmptyTable();
+  updateButtonStates();
+  setStatus(`Fresh lineup: ${picked.size} bots ready`, "success");
 }
 
 function renderCodePicker() {
@@ -227,6 +281,7 @@ async function runTournament() {
     renderCurrentEvent();
     renderStandings(data);
     setStatus(`Complete: ${data.hands_played} hands in ${data.duration_ms} ms`, "success");
+    celebrate();
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
@@ -259,6 +314,7 @@ async function runBatch() {
 
     renderBatchResults(data);
     setStatus(`Batch complete: ${data.runs} runs in ${data.duration_ms} ms`, "success");
+    celebrate(34);
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
@@ -531,22 +587,26 @@ function renderCurrentEvent() {
 
   const event = replayEvents[currentEventIndex];
   els.eventRange.value = String(currentEventIndex);
+  updateEventCounter();
   els.eventMessage.textContent = event.message || "";
   renderSnapshot(event.snapshot);
   updateButtonStates();
 }
 
 function renderSnapshot(snapshot) {
+  updateEventCounter();
   const hand = snapshot.hand_number || 0;
   const street = snapshot.street || "waiting";
   els.handTitle.textContent = hand ? `Hand ${hand} · ${titleCase(street)}` : "No hand loaded";
   els.pot.textContent = `Pot ${formatNumber(snapshot.pot || 0)}`;
   renderCards(els.community, snapshot.community_cards || [], 5);
-  renderSeats(snapshot.players || [], snapshot.dealer);
+  const activeEvent = replayEvents[currentEventIndex];
+  const winnerName = activeEvent?.type === "win" ? activeEvent.player : "";
+  renderSeats(snapshot.players || [], snapshot.dealer, winnerName);
   renderPlayerHand(snapshot.players || []);
 }
 
-function renderSeats(players, dealerName) {
+function renderSeats(players, dealerName, winnerName = "") {
   els.seatLayer.innerHTML = "";
   els.seatLayer.dataset.count = String(players.length);
   els.seatLayer.classList.toggle("is-dense", players.length > 8);
@@ -564,6 +624,7 @@ function renderSeats(players, dealerName) {
     if (player.all_in) seat.classList.add("is-all-in");
     if (player.name === dealerName) seat.classList.add("is-dealer");
     if (player.name === "You") seat.classList.add("is-human");
+    if (player.name === winnerName) seat.classList.add("is-winner");
 
     const stateLabel = player.folded ? "Folded" : player.all_in ? "All-in" : "In";
     const stackLabel = `${formatNumber(player.stack)} chips`;
@@ -630,12 +691,13 @@ function renderCards(container, cards, slots, faceDown = false) {
 
 function renderStandings(data) {
   els.standingsBody.innerHTML = "";
+  const maxChips = Math.max(1, ...data.standings.map((row) => row.chips));
   for (const row of data.standings) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${row.rank}</td>
-      <td>${escapeHtml(row.name)}</td>
-      <td>${formatNumber(row.chips)}</td>
+      <td><span class="rank-medal ${row.rank === 1 ? "is-first" : ""}">${row.rank}</span></td>
+      <td class="${row.rank === 1 ? "winner-name" : ""}">${escapeHtml(row.name)}</td>
+      <td class="metric-cell"><span class="metric-value">${formatNumber(row.chips)}</span><span class="metric-bar"><span style="width:${Math.max(3, (row.chips / maxChips) * 100)}%"></span></span></td>
       <td>${escapeHtml(row.status)}</td>
     `;
     els.standingsBody.appendChild(tr);
@@ -673,10 +735,10 @@ function renderBatchResults(data) {
   for (const row of data.results) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${row.rank}</td>
-      <td>${escapeHtml(row.name)}</td>
+      <td><span class="rank-medal ${row.rank === 1 ? "is-first" : ""}">${row.rank}</span></td>
+      <td class="${row.rank === 1 ? "winner-name" : ""}">${escapeHtml(row.name)}</td>
       <td>${formatNumber(row.wins)}</td>
-      <td>${Math.round(row.win_rate * 100)}%</td>
+      <td class="metric-cell"><span class="metric-value">${Math.round(row.win_rate * 100)}%</span><span class="metric-bar"><span style="width:${row.win_rate * 100}%"></span></span></td>
       <td>${row.average_rank.toFixed(2)}</td>
     `;
     els.batchBody.appendChild(tr);
@@ -703,6 +765,7 @@ function renderEmptyTable() {
   });
   els.eventRange.max = 0;
   els.eventRange.value = 0;
+  updateEventCounter();
   els.eventMessage.textContent = selected.length
     ? "Run a tournament to see the table replay."
     : "Select at least two bots to preview and run a tournament.";
@@ -760,8 +823,42 @@ function numberValue(input) {
 }
 
 function setStatus(message, kind = "") {
-  els.status.textContent = message;
-  els.status.className = `status ${kind}`.trim();
+  const statusText = els.status.querySelector(".status-text");
+  if (statusText) statusText.textContent = message;
+  els.status.className = `status ${kind}${isBusy && !kind ? " is-busy" : ""}`.trim();
+}
+
+function updateEventCounter() {
+  const total = replayEvents.length;
+  els.eventCounter.textContent = total ? `${currentEventIndex + 1} / ${total}` : "0 / 0";
+}
+
+function handleReplayKeys(event) {
+  const target = event.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) return;
+  if (event.key === "ArrowLeft") stepReplay(-1);
+  if (event.key === "ArrowRight") stepReplay(1);
+  if (event.key === " " && replayEvents.length) {
+    event.preventDefault();
+    togglePlayback();
+  }
+}
+
+function celebrate(count = 52) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  els.celebration.innerHTML = "";
+  const colors = ["#e6bc62", "#66c28d", "#d75058", "#f7f0d9"];
+  for (let index = 0; index < count; index += 1) {
+    const piece = document.createElement("span");
+    piece.className = "confetti";
+    piece.style.left = `${Math.random() * 100}%`;
+    piece.style.background = colors[index % colors.length];
+    piece.style.setProperty("--drift", `${Math.round(Math.random() * 180 - 90)}px`);
+    piece.style.setProperty("--fall-time", `${1400 + Math.round(Math.random() * 1100)}ms`);
+    piece.style.animationDelay = `${Math.round(Math.random() * 260)}ms`;
+    els.celebration.appendChild(piece);
+  }
+  window.setTimeout(() => { els.celebration.innerHTML = ""; }, 3000);
 }
 
 function formatError(detail) {

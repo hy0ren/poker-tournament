@@ -4,26 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Poker Bot Tournament</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=19" />
+    <meta name="theme-color" content="#07110e" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23e6bc62'/%3E%3Ctext x='32' y='46' text-anchor='middle' font-size='43'%3E%E2%99%A0%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/assets/styles.css?v=20" />
   </head>
   <body>
     <header class="app-header">
-      <div>
-        <p class="eyebrow">Workshop Table</p>
-        <h1>Poker Bot Tournament</h1>
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span>♠</span></div>
+        <div>
+          <p class="eyebrow">The Bot Cardroom</p>
+          <h1>Poker Bot Tournament</h1>
+          <p class="brand-subtitle">Build a lineup. Deal the cards. See whose code holds up.</p>
+        </div>
       </div>
-      <p id="status" class="status" role="status" aria-live="polite">Ready</p>
+      <p id="status" class="status" role="status" aria-live="polite"><span class="status-dot"></span><span class="status-text">Ready</span></p>
     </header>
 
     <main class="workspace">
       <section class="table-panel" aria-label="Poker table replay">
         <div class="table-toolbar">
           <div>
-            <p class="eyebrow">Replay</p>
+            <p class="eyebrow">Live table</p>
             <h2 id="hand-title">No hand loaded</h2>
           </div>
           <div class="table-actions">
-            <button type="button" id="play-btn" class="run-button play">Play This Table</button>
+            <button type="button" id="play-btn" class="run-button play"><span aria-hidden="true">♠</span> Take a Seat</button>
             <div class="replay-buttons" aria-label="Replay controls">
               <button type="button" id="prev-event" title="Previous event" aria-label="Previous event">‹</button>
               <button type="button" id="play-toggle" title="Play or pause replay" aria-label="Play or pause replay">▶</button>
@@ -41,6 +47,7 @@
 
         <div class="poker-table" id="poker-table">
           <div class="table-felt">
+            <div class="felt-brand" aria-hidden="true"><span>♠</span> BOT CARDROOM <span>♦</span></div>
             <div class="board">
               <div class="pot" id="pot">Pot 0</div>
               <div class="community" id="community-cards"></div>
@@ -50,7 +57,10 @@
         </div>
 
         <div class="event-strip">
-          <input id="event-range" type="range" min="0" max="0" value="0" />
+          <div class="replay-progress">
+            <input id="event-range" type="range" min="0" max="0" value="0" aria-label="Replay position" />
+            <span id="event-counter">0 / 0</span>
+          </div>
           <p id="event-message">Run a tournament to see the table replay.</p>
         </div>
 
@@ -79,17 +89,31 @@
       <aside class="control-panel" aria-label="Tournament controls">
         <section class="control-section">
           <div class="section-heading">
-            <p class="eyebrow">Bots</p>
+            <div>
+              <p class="eyebrow">Your lineup</p>
+              <h2>Choose the contenders</h2>
+            </div>
             <div class="quick-actions">
-              <button type="button" id="select-all" title="Select the full bot lineup">Select Lineup</button>
+              <button type="button" id="random-lineup" title="Pick six bots at random">Shuffle 6</button>
+              <button type="button" id="select-all" title="Select the full bot lineup">All</button>
               <button type="button" id="clear-all" title="Clear selected bots">Clear</button>
             </div>
           </div>
+          <label class="bot-search">
+            <span aria-hidden="true">⌕</span>
+            <input id="bot-search" type="search" placeholder="Find a bot or strategy…" autocomplete="off" />
+          </label>
           <div id="bot-list" class="bot-list"></div>
         </section>
 
         <section class="control-section">
-          <p class="eyebrow">Settings</p>
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Game setup</p>
+              <h2>Set the stakes</h2>
+            </div>
+            <span class="settings-icon" aria-hidden="true">♣</span>
+          </div>
           <form id="settings-form" class="settings-grid">
             <label>
               <span>Mode</span>
@@ -120,7 +144,7 @@
             </label>
           </form>
           <p id="bot-count" class="bot-count">0 selected</p>
-          <button type="button" id="run-btn" class="run-button">Run Tournament</button>
+          <button type="button" id="run-btn" class="run-button"><span aria-hidden="true">▶</span> Run Tournament</button>
           <div class="batch-controls">
             <label>
               <span>Batch runs</span>
@@ -186,6 +210,7 @@
       </section>
     </main>
 
-    <script src="/assets/app.js?v=19"></script>
+    <div id="celebration" class="celebration" aria-hidden="true"></div>
+    <script src="/assets/app.js?v=20"></script>
   </body>
 </html>
